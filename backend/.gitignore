@@ -1,5 +1,34 @@
-node_modules
-# Keep environment variables out of version control
-.env
+# compiled output
+/dist
+/node_modules
 
+# logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log
+
+# OS
+.DS_Store
+
+# tests
+/coverage
+/.nyc_output
+
+# environment variables
+.env
+.env.*.local
+
+# generated Prisma client (kept out of VCS; regenerated via `prisma generate`)
 /generated/prisma
+
+# uploaded file attachments (persisted via a Docker volume in production)
+/uploads
+/uploads-test
+/backup-tmp
+
+# IDE
+.idea
+.vscode/*
+!.vscode/extensions.json

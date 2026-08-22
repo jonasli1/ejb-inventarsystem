@@ -32,4 +32,17 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    // Test files legitimately use loosely-typed mocks and untyped HTTP
+    // response bodies (supertest's `res.body` is `any`); strict unsafe-*
+    // checks add noise there without catching real bugs.
+    files: ['**/*.spec.ts', 'test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
 );

@@ -1,13 +1,648 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum AuthProvider {
+  local
+  churchtools
+  passkey
+}
+
+enum GroupSource {
+  churchtools
+  manual
+}
+
+enum ArticleType {
+  UNIQUE
+  BULK
+  CONSUMABLE
+}
+
+enum InventoryStatus {
+  available
+  borrowed
+  maintenance
+  defect
+  retired
+  installed
+}
+
+enum StockMovementType {
+  in
+  out
+  move
+  adjust
+  status_change
+  condition_change
+}
+
+enum LoanSource {
+  internal
+  external
+}
+
+enum LoanStatus {
+  requested
+  approved
+  issued
+  completed
+}
+
+enum RoleAssignSource {
+  manual
+  group
+}
+
+enum AuditAction {
+  create
+  update
+  delete
+}
+
+enum AttachmentEntityType {
+  article
+  inventoryItem
+  loanItem
+}
+
+enum AttachmentCategory {
+  image
+  document
+  inspection
+  checkoutPhoto
+  returnPhoto
+}
+
+enum BackupDestinationType {
+  sftp
+  onedrive
+}
+
+enum BackupFrequency {
+  daily
+  weekly
+  monthly
+}
+
+// ---------------------------------------------------------------------------
+// Auth / Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id          String    @id @default(uuid())
+  displayName String    @map("display_name")
+  email       String    @unique
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  authIdentities          AuthIdentity[]
+  refreshTokens           RefreshToken[]
+  userRoles               UserRole[]
+  userGroups              UserGroup[]
+  stockMovements          StockMovement[]
+  loansLent               Loan[]                   @relation("LoanLentBy")
+  auditLogs               AuditLog[]
+  attachments             Attachment[]
+  loanBlackoutPeriods     LoanBlackoutPeriod[]
+  loanTemplates           LoanTemplate[]
+  notificationPreferences NotificationPreference[]
+
+  @@map("users")
+}
+
+model AuthIdentity {
+  id              String       @id @default(uuid())
+  userId          String       @map("user_id")
+  provider        AuthProvider
+  providerSubject String       @map("provider_subject")
+
+  // local provider
+  passwordHash String? @map("password_hash")
+
+  // passkey provider
+  credentialId String?  @unique @map("credential_id")
+  publicKey    String?  @map("public_key")
+  signCount    BigInt?  @map("sign_count")
+  transports   String[] @default([])
+  deviceLabel  String?  @map("device_label")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerSubject])
+  @@index([userId])
+  @@map("auth_identities")
+}
+
+model RefreshToken {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")
+  replacedBy  String?   @map("replaced_by")
+  deviceLabel String?   @map("device_label")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// RBAC
+// ---------------------------------------------------------------------------
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+  groupRoles      GroupRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId String           @map("user_id")
+  roleId String           @map("role_id")
+  source RoleAssignSource @default(manual)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+// ---------------------------------------------------------------------------
+// Groups (ChurchTools + manual)
+// ---------------------------------------------------------------------------
+
+model Group {
+  id             String    @id @default(uuid())
+  name           String
+  externalRef    String?   @unique @map("external_ref")
+  description    String?
+  organizationId String?   @map("organization_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  userGroups   UserGroup[]
+  groupRoles   GroupRole[]
+
+  @@index([organizationId])
+  @@map("groups")
+}
+
+// A role automatically granted to members of a group. Kept separate from
+// RolePermission (which attaches permissions to a role, not roles to a group).
+model GroupRole {
+  groupId String @map("group_id")
+  roleId  String @map("role_id")
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  role  Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([groupId, roleId])
+  @@map("group_roles")
+}
+
+model UserGroup {
+  id        String      @id @default(uuid())
+  userId    String      @map("user_id")
+  groupId   String      @map("group_id")
+  source    GroupSource
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+  @@index([groupId])
+  @@map("user_groups")
+}
+
+// ---------------------------------------------------------------------------
+// Ownership: Organization -> OrganizationUnit
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  units          OrganizationUnit[]
+  inventoryItems InventoryItem[]
+  groups         Group[]
+
+  @@map("organizations")
+}
+
+model OrganizationUnit {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  name           String
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inventoryItems InventoryItem[]
+
+  @@unique([organizationId, name])
+  @@map("organization_units")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog: Category -> Article
+// ---------------------------------------------------------------------------
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String
+  parentId  String?   @map("parent_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  parent   Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryToCategory")
+  articles Article[]
+
+  @@map("categories")
+}
+
+model Article {
+  id            String      @id @default(uuid())
+  name          String
+  description   String?
+  categoryId    String?     @map("category_id")
+  type          ArticleType
+  unitOfMeasure String?     @map("unit_of_measure")
+  manufacturer  String?
+  imageUrl      String?     @map("image_url")
+  attributes    Json?
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  deletedAt     DateTime?   @map("deleted_at")
+
+  category          Category?          @relation(fields: [categoryId], references: [id])
+  inventoryItems    InventoryItem[]
+  loanTemplateItems LoanTemplateItem[]
+
+  @@map("articles")
+}
+
+// ---------------------------------------------------------------------------
+// Inventory: Location -> Room -> InventoryItem
+// ---------------------------------------------------------------------------
+
+model Location {
+  id        String    @id @default(uuid())
+  name      String
+  address   String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  rooms          Room[]
+  inventoryItems InventoryItem[]
+
+  @@map("locations")
+}
+
+model Room {
+  id         String    @id @default(uuid())
+  locationId String    @map("location_id")
+  name       String
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  location       Location        @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  inventoryItems InventoryItem[]
+  movementsFrom  StockMovement[] @relation("MovementFromRoom")
+  movementsTo    StockMovement[] @relation("MovementToRoom")
+
+  @@unique([locationId, name])
+  @@map("rooms")
+}
+
+model InventoryItem {
+  id                  String          @id @default(uuid())
+  articleId           String          @map("article_id")
+  locationId          String          @map("location_id")
+  roomId              String          @map("room_id")
+  ownerOrganizationId String          @map("owner_organization_id")
+  ownerUnitId         String          @map("owner_unit_id")
+  inventoryNumber     String          @unique @map("inventory_number")
+  status              InventoryStatus @default(available)
+  serialNumber        String?         @map("serial_number")
+  conditionPercent    Int?            @map("condition_percent")
+  purchasePrice       Decimal?        @map("purchase_price") @db.Decimal(10, 2)
+  purchaseDate        DateTime?       @map("purchase_date")
+  notes               String?
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  deletedAt           DateTime?       @map("deleted_at")
+
+  article           Article          @relation(fields: [articleId], references: [id])
+  location          Location         @relation(fields: [locationId], references: [id])
+  room              Room             @relation(fields: [roomId], references: [id])
+  ownerOrganization Organization     @relation(fields: [ownerOrganizationId], references: [id])
+  ownerUnit         OrganizationUnit @relation(fields: [ownerUnitId], references: [id])
+
+  stockMovements StockMovement[]
+  loanItems      LoanItem[]
+
+  @@index([articleId])
+  @@index([locationId, roomId])
+  @@index([ownerOrganizationId, ownerUnitId])
+  @@map("inventory_items")
+}
+
+model StockMovement {
+  id              String            @id @default(uuid())
+  inventoryItemId String            @map("inventory_item_id")
+  type            StockMovementType
+  fromRoomId      String?           @map("from_room_id")
+  toRoomId        String?           @map("to_room_id")
+  oldStatus       InventoryStatus?  @map("old_status")
+  newStatus       InventoryStatus?  @map("new_status")
+  oldCondition    Int?              @map("old_condition")
+  newCondition    Int?              @map("new_condition")
+  userId          String?           @map("user_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  note            String?
+
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  fromRoom      Room?         @relation("MovementFromRoom", fields: [fromRoomId], references: [id])
+  toRoom        Room?         @relation("MovementToRoom", fields: [toRoomId], references: [id])
+  user          User?         @relation(fields: [userId], references: [id])
+
+  @@index([inventoryItemId])
+  @@map("stock_movements")
+}
+
+// ---------------------------------------------------------------------------
+// Loans
+// ---------------------------------------------------------------------------
+
+model Loan {
+  id               String     @id @default(uuid())
+  borrowerPersonId String?    @map("borrower_person_id")
+  borrowerName     String?    @map("borrower_name")
+  borrowerStreet   String?    @map("borrower_street")
+  borrowerCity     String?    @map("borrower_city")
+  borrowerEmail    String?    @map("borrower_email")
+  borrowerPhone    String?    @map("borrower_phone")
+  lentByUserId     String     @map("lent_by_user_id")
+  source           LoanSource @default(internal)
+  // Planned window (may be in the future); issuedAt/returnedAt are the actual
+  // physical hand-out/return events, set by the issue/return workflow steps.
+  checkoutDate     DateTime   @map("checkout_date")
+  dueDate          DateTime?  @map("due_date")
+  issuedAt         DateTime?  @map("issued_at")
+  returnedAt       DateTime?  @map("returned_at")
+  status           LoanStatus @default(requested)
+  notes            String?
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+  deletedAt        DateTime?  @map("deleted_at")
+
+  lentBy User       @relation("LoanLentBy", fields: [lentByUserId], references: [id])
+  items  LoanItem[]
+
+  @@map("loans")
+}
+
+model LoanItem {
+  id                  String    @id @default(uuid())
+  loanId              String    @map("loan_id")
+  inventoryItemId     String    @map("inventory_item_id")
+  checkedOutCondition Int?      @map("checked_out_condition")
+  returnedCondition   Int?      @map("returned_condition")
+  returnedAt          DateTime? @map("returned_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  loan          Loan          @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id])
+
+  @@index([loanId])
+  @@index([inventoryItemId])
+  @@map("loan_items")
+}
+
+// ---------------------------------------------------------------------------
+// Audit log: create/update/delete of top-level entities (Users, Articles,
+// Loans, Organizations, Locations, Roles, Groups). Inventory item movements
+// (status/room/condition changes) are tracked separately in StockMovement;
+// the /activity feed merges both into one timeline.
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  entityType String      @map("entity_type")
+  entityId   String      @map("entity_id")
+  action     AuditAction
+  summary    String
+  userId     String?     @map("user_id")
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Attachments: generic file storage for articles, inventory items (incl.
+// inspection documents) and loan items (condition photos at issue/return).
+// ---------------------------------------------------------------------------
+
+model Attachment {
+  id           String               @id @default(uuid())
+  entityType   AttachmentEntityType @map("entity_type")
+  entityId     String               @map("entity_id")
+  category     AttachmentCategory
+  fileName     String               @map("file_name")
+  storageKey   String               @map("storage_key")
+  mimeType     String               @map("mime_type")
+  sizeBytes    Int                  @map("size_bytes")
+  uploadedById String?              @map("uploaded_by_id")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  deletedAt    DateTime?            @map("deleted_at")
+
+  uploadedBy User? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@map("attachments")
+}
+
+// ---------------------------------------------------------------------------
+// Backup: singleton configuration row for scheduled backups (SFTP/OneDrive).
+// Sensitive credential fields are stored AES-256-GCM encrypted (BACKUP_SECRET_KEY).
+// ---------------------------------------------------------------------------
+
+model BackupConfig {
+  id              String                 @id @default(uuid())
+  enabled         Boolean                @default(false)
+  frequency       BackupFrequency        @default(weekly)
+  destinationType BackupDestinationType? @map("destination_type")
+
+  sftpHost        String? @map("sftp_host")
+  sftpPort        Int?    @map("sftp_port")
+  sftpUsername    String? @map("sftp_username")
+  sftpPasswordEnc String? @map("sftp_password_enc")
+  sftpRemotePath  String? @map("sftp_remote_path")
+
+  onedriveRefreshTokenEnc String? @map("onedrive_refresh_token_enc")
+  onedriveFolderPath      String? @map("onedrive_folder_path")
+
+  lastRunAt      DateTime? @map("last_run_at")
+  lastRunStatus  String?   @map("last_run_status")
+  lastRunMessage String?   @map("last_run_message")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@map("backup_config")
+}
+
+// ---------------------------------------------------------------------------
+// Loan blackout periods: absolute date ranges during which no loans of any
+// kind may be requested/approved/issued, regardless of permission tier.
+// ---------------------------------------------------------------------------
+
+model LoanBlackoutPeriod {
+  id          String   @id @default(uuid())
+  startDate   DateTime @map("start_date")
+  endDate     DateTime @map("end_date")
+  reason      String?
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([startDate, endDate])
+  @@map("loan_blackout_periods")
+}
+
+// ---------------------------------------------------------------------------
+// Loan templates: reusable article+quantity equipment sets (loans.administer
+// only), used to pre-fill a new loan's item rows.
+// ---------------------------------------------------------------------------
+
+model LoanTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  notes       String?
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  createdBy User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  items     LoanTemplateItem[]
+
+  @@map("loan_templates")
+}
+
+model LoanTemplateItem {
+  id         String @id @default(uuid())
+  templateId String @map("template_id")
+  articleId  String @map("article_id")
+  quantity   Int    @default(1)
+
+  template LoanTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  article  Article      @relation(fields: [articleId], references: [id])
+
+  @@index([templateId])
+  @@map("loan_template_items")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications: singleton SMTP configuration + per-user, per-event opt-in
+// preferences. A preference is only meaningful while the user still holds
+// the permission that event requires (see notification-events.ts); pruned
+// automatically whenever a user's effective permissions shrink.
+// ---------------------------------------------------------------------------
+
+model EmailConfig {
+  id          String   @id @default(uuid())
+  enabled     Boolean  @default(false)
+  host        String?
+  port        Int?
+  secure      Boolean  @default(true)
+  username    String?
+  passwordEnc String?  @map("password_enc")
+  fromAddress String?  @map("from_address")
+  fromName    String?  @map("from_name")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("email_config")
+}
+
+model NotificationPreference {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  eventKey  String   @map("event_key")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventKey])
+  @@map("notification_preferences")
 }

@@ -1,0 +1,16 @@
+node_modules
+dist
+*.tsbuildinfo
+coverage
+.nyc_output
+generated
+uploads
+uploads-test
+backup-tmp
+.env
+.env.*
+!.env.example
+.git
+.vscode
+.idea
+*.log
