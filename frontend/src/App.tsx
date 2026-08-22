@@ -6,6 +6,8 @@ import { ProtectedRoute } from '@/auth/ProtectedRoute';
 import { ToastProvider } from '@/components/ui/toast';
 import { AppShell } from '@/components/layout/AppShell';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { ChurchToolsCallbackPage } from '@/features/auth/ChurchToolsCallbackPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { InventoryPage } from '@/features/inventory/InventoryPage';
@@ -33,6 +35,8 @@ function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/auth/churchtools/callback" element={<ChurchToolsCallbackPage />} />
 
               <Route element={<ProtectedRoute />}>

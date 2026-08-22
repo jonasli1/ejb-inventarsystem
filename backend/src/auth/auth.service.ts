@@ -12,6 +12,8 @@ import * as argon2 from 'argon2';
 import * as crypto from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { GroupsService } from '../groups/groups.service';
+import { UsersService } from '../users/users.service';
+import { EmailService } from '../notifications/email.service';
 import {
   ChurchToolsService,
   ChurchToolsProfile,
@@ -25,6 +27,8 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/server';
 
+const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1h
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -36,6 +40,8 @@ export class AuthService {
     private readonly churchTools: ChurchToolsService,
     private readonly webauthn: WebauthnService,
     private readonly groups: GroupsService,
+    private readonly users: UsersService,
+    private readonly email: EmailService,
   ) {}
 
   // ---------------------------------------------------------------------
@@ -101,6 +107,76 @@ export class AuthService {
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  /** Whether email is configured, i.e. whether the "forgot password" flow can deliver anything. */
+  async isPasswordResetAvailable(): Promise<boolean> {
+    return this.email.isConfigured();
+  }
+
+  /**
+   * Self-service, unauthenticated password reset request. Always resolves
+   * without error and without revealing whether the address is known, to
+   * avoid turning this into a user-enumeration endpoint - callers rely on
+   * throttling (see AuthController) against abuse instead.
+   */
+  async requestPasswordReset(email: string): Promise<void> {
+    if (!(await this.email.isConfigured())) return;
+
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || !user.isActive || user.deletedAt) return;
+
+    // At most one outstanding token per user - a fresh request invalidates
+    // any link sent earlier.
+    await this.prisma.passwordResetToken.deleteMany({
+      where: { userId: user.id },
+    });
+
+    const rawToken = crypto.randomBytes(32).toString('base64url');
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: this.hashToken(rawToken),
+        expiresAt: new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS),
+      },
+    });
+
+    const frontendUrl = this.config.get<string>('frontendUrl');
+    const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
+    await this.email.sendPasswordResetEmail(user.email, resetUrl);
+  }
+
+  /** Completes a password reset started via `requestPasswordReset`. Single-use, time-limited token. */
+  async resetPasswordWithToken(
+    token: string,
+    newPassword: string,
+    newPasswordConfirmation: string,
+  ): Promise<void> {
+    if (newPassword !== newPasswordConfirmation) {
+      throw new BadRequestException(
+        'The new password and its confirmation do not match.',
+      );
+    }
+
+    const resetToken = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash: this.hashToken(token) },
+    });
+
+    if (resetToken) {
+      // Single-use: consume it up front so a reset attempt (even a failing
+      // one, e.g. an expired token) can't be replayed.
+      await this.prisma.passwordResetToken.delete({
+        where: { id: resetToken.id },
+      });
+    }
+
+    if (!resetToken || resetToken.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException(
+        'This password reset link is invalid or has expired.',
+      );
+    }
+
+    await this.users.resetPassword(resetToken.userId, { newPassword });
   }
 
   async login(user: User, deviceLabel?: string): Promise<TokenResponseDto> {

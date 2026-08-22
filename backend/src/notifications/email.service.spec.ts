@@ -7,18 +7,11 @@ import { ConfigService } from '@nestjs/config';
 
 jest.mock('nodemailer');
 
-function rolesWithPermissions(...keys: string[]) {
-  return [
-    { role: { rolePermissions: keys.map((key) => ({ permission: { key } })) } },
-  ];
-}
-
 describe('EmailService', () => {
   let service: EmailService;
   let prisma: {
     emailConfig: { upsert: jest.Mock; findUnique: jest.Mock };
-    notificationPreference: { findMany: jest.Mock };
-    userRole: { findMany: jest.Mock };
+    user: { findMany: jest.Mock };
   };
   let audit: { log: jest.Mock };
   let sendMail: jest.Mock;
@@ -47,8 +40,7 @@ describe('EmailService', () => {
         }),
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      notificationPreference: { findMany: jest.fn().mockResolvedValue([]) },
-      userRole: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
     };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     const config = { get: jest.fn().mockReturnValue('test-secret-key') };
@@ -95,73 +87,79 @@ describe('EmailService', () => {
       expect(sendMail).not.toHaveBeenCalled();
     });
 
-    it('sends only to subscribers who still hold a required permission', async () => {
+    it('sends to every eligible user by default (opt-out, not opt-in)', async () => {
       prisma.emailConfig.findUnique.mockResolvedValue(enabledRow);
-      prisma.notificationPreference.findMany.mockResolvedValue([
+      // The findMany `where` already restricts to active users holding a
+      // required permission - the mock just returns who "matched" it.
+      prisma.user.findMany.mockResolvedValue([
+        { email: 'no-row@example.com', notificationPreferences: [] },
         {
-          user: {
-            id: 'user-1',
-            email: 'permitted@example.com',
-            isActive: true,
-            deletedAt: null,
-          },
-        },
-        {
-          user: {
-            id: 'user-2',
-            email: 'stale@example.com',
-            isActive: true,
-            deletedAt: null,
-          },
-        },
-        {
-          user: {
-            id: 'user-3',
-            email: 'inactive@example.com',
-            isActive: false,
-            deletedAt: null,
-          },
+          email: 'explicitly-on@example.com',
+          notificationPreferences: [{ enabled: true }],
         },
       ]);
-      prisma.userRole.findMany.mockImplementation(
-        ({ where }: { where: { userId: string } }) => {
-          if (where.userId === 'user-1')
-            return Promise.resolve(rolesWithPermissions('loans.manage'));
-          return Promise.resolve([]);
-        },
+
+      await service.notifyEvent('loan.requested', 'Subject', 'Body');
+
+      expect(sendMail).toHaveBeenCalledTimes(2);
+      expect(sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'no-row@example.com' }),
       );
+      expect(sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'explicitly-on@example.com' }),
+      );
+    });
+
+    it('skips a user who explicitly opted out', async () => {
+      prisma.emailConfig.findUnique.mockResolvedValue(enabledRow);
+      prisma.user.findMany.mockResolvedValue([
+        {
+          email: 'opted-out@example.com',
+          notificationPreferences: [{ enabled: false }],
+        },
+        { email: 'default-on@example.com', notificationPreferences: [] },
+      ]);
 
       await service.notifyEvent('loan.requested', 'Subject', 'Body');
 
       expect(sendMail).toHaveBeenCalledTimes(1);
       expect(sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({ to: 'permitted@example.com' }),
+        expect.objectContaining({ to: 'default-on@example.com' }),
+      );
+    });
+
+    it("queries only active users holding one of the event's required permissions", async () => {
+      prisma.emailConfig.findUnique.mockResolvedValue(enabledRow);
+
+      await service.notifyEvent('backup.failed', 'Subject', 'Body');
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            isActive: true,
+            deletedAt: null,
+            userRoles: {
+              some: {
+                role: {
+                  rolePermissions: {
+                    some: {
+                      permission: { key: { in: ['settings.manage'] } },
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        }),
       );
     });
 
     it('does not let one recipient failure stop the others', async () => {
       prisma.emailConfig.findUnique.mockResolvedValue(enabledRow);
-      prisma.notificationPreference.findMany.mockResolvedValue([
-        {
-          user: {
-            id: 'user-1',
-            email: 'fails@example.com',
-            isActive: true,
-            deletedAt: null,
-          },
-        },
-        {
-          user: {
-            id: 'user-2',
-            email: 'ok@example.com',
-            isActive: true,
-            deletedAt: null,
-          },
-        },
+      prisma.user.findMany.mockResolvedValue([
+        { email: 'fails@example.com', notificationPreferences: [] },
+        { email: 'ok@example.com', notificationPreferences: [] },
       ]);
-      prisma.userRole.findMany.mockResolvedValue(
-        rolesWithPermissions('loans.manage'),
-      );
       sendMail
         .mockRejectedValueOnce(new Error('SMTP down'))
         .mockResolvedValueOnce(undefined);
@@ -169,6 +167,51 @@ describe('EmailService', () => {
       await service.notifyEvent('loan.requested', 'Subject', 'Body');
 
       expect(sendMail).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('isConfigured', () => {
+    it('is false when disabled or missing host/fromAddress', async () => {
+      prisma.emailConfig.findUnique.mockResolvedValue(null);
+      await expect(service.isConfigured()).resolves.toBe(false);
+
+      prisma.emailConfig.findUnique.mockResolvedValue({
+        ...enabledRow,
+        enabled: false,
+      });
+      await expect(service.isConfigured()).resolves.toBe(false);
+    });
+
+    it('is true when enabled with host and fromAddress set', async () => {
+      prisma.emailConfig.findUnique.mockResolvedValue(enabledRow);
+      await expect(service.isConfigured()).resolves.toBe(true);
+    });
+  });
+
+  describe('sendPasswordResetEmail', () => {
+    it('is a no-op when email is not configured', async () => {
+      prisma.emailConfig.findUnique.mockResolvedValue(null);
+      await service.sendPasswordResetEmail(
+        'user@example.com',
+        'https://app.example.com/reset-password?token=abc',
+      );
+      expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it('sends the reset link to the given address', async () => {
+      prisma.emailConfig.findUnique.mockResolvedValue(enabledRow);
+      await service.sendPasswordResetEmail(
+        'user@example.com',
+        'https://app.example.com/reset-password?token=abc',
+      );
+      expect(sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'user@example.com',
+          text: expect.stringContaining(
+            'https://app.example.com/reset-password?token=abc',
+          ),
+        }),
+      );
     });
   });
 });

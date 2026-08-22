@@ -180,7 +180,7 @@ bevor die Container neu gestartet werden (`docker compose up -d --build`):
 | Variable | Anzupassen auf |
 |---|---|
 | `WEBAUTHN_RP_ID` | Hostname ohne Protokoll/Port, z. B. `inventar.beispiel.de` |
-| `WEBAUTHN_ORIGIN` | Vollständige Adresse der Weboberfläche, z. B. `https://inventar.beispiel.de` |
+| `WEBAUTHN_ORIGIN` | Vollständige Adresse der Weboberfläche, z. B. `https://inventar.beispiel.de` – wird auch als Basis-URL für Links in E-Mails verwendet (z. B. „Passwort zurücksetzen“) |
 | `CHURCHTOOLS_REDIRECT_URI` | `<Adresse-der-Weboberfläche>/auth/churchtools/callback` |
 | `MS_REDIRECT_URI` | `<Adresse-der-Weboberfläche>/settings/backup/onedrive/callback` (nur bei OneDrive-Backup) |
 

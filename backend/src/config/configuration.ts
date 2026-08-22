@@ -37,6 +37,11 @@ export default () => ({
     origin: process.env.WEBAUTHN_ORIGIN ?? 'http://localhost:5173',
   },
 
+  // Base URL used to build links in transactional emails (password reset).
+  // Reuses WEBAUTHN_ORIGIN rather than introducing a second variable: both
+  // already have to equal the exact origin the frontend is served from.
+  frontendUrl: process.env.WEBAUTHN_ORIGIN ?? 'http://localhost:5173',
+
   admin: {
     email: process.env.ADMIN_EMAIL,
     password: process.env.ADMIN_PASSWORD,

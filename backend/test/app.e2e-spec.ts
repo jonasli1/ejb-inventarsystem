@@ -3,10 +3,17 @@ import { Test, TestingModule } from '@nestjs/testing';
 import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
+import nodemailer from 'nodemailer';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { ChurchToolsService } from '../src/auth/churchtools/churchtools.service';
+import { EmailService } from '../src/notifications/email.service';
 import { ALL_PERMISSIONS } from '../src/common/constants/permissions';
+
+// EmailService is exercised for real via the DI container in a couple of
+// tests below (notification default-on delivery, password reset) - mock the
+// wire transport so those don't attempt a real SMTP connection.
+jest.mock('nodemailer');
 
 describe('Inventarsystem API (e2e)', () => {
   let app: INestApplication<App>;
@@ -1039,7 +1046,10 @@ describe('Inventarsystem API (e2e)', () => {
       const user = await request(app.getHttpServer())
         .post('/api/v1/users')
         .set('Authorization', `Bearer ${token}`)
-        .send({ email: 'group-role@example.com', displayName: 'Group Role User' })
+        .send({
+          email: 'group-role@example.com',
+          displayName: 'Group Role User',
+        })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -1102,7 +1112,10 @@ describe('Inventarsystem API (e2e)', () => {
       const user = await request(app.getHttpServer())
         .post('/api/v1/users')
         .set('Authorization', `Bearer ${token}`)
-        .send({ email: 'manual-plus-group@example.com', displayName: 'Manual Plus Group User' })
+        .send({
+          email: 'manual-plus-group@example.com',
+          displayName: 'Manual Plus Group User',
+        })
         .expect(201);
 
       // Manual assignment first.
@@ -1199,12 +1212,18 @@ describe('Inventarsystem API (e2e)', () => {
       const withDefaults = await request(app.getHttpServer())
         .post('/api/v1/inventory')
         .set('Authorization', `Bearer ${token}`)
-        .send({ articleId, locationId, roomId, ownerOrganizationId: orgId, ownerUnitId: unitId })
+        .send({
+          articleId,
+          locationId,
+          roomId,
+          ownerOrganizationId: orgId,
+          ownerUnitId: unitId,
+        })
         .expect(201);
       expect(withDefaults.body.purchaseDate).toBeDefined();
-      expect(
-        new Date(withDefaults.body.purchaseDate).toDateString(),
-      ).toBe(new Date().toDateString());
+      expect(new Date(withDefaults.body.purchaseDate).toDateString()).toBe(
+        new Date().toDateString(),
+      );
 
       const explicit = await request(app.getHttpServer())
         .post('/api/v1/inventory')
@@ -1254,9 +1273,9 @@ describe('Inventarsystem API (e2e)', () => {
         .get('/api/v1/inventory?search=search-me')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
-      expect(found.body.data.some((i: { id: string }) => i.id === item.body.id)).toBe(
-        true,
-      );
+      expect(
+        found.body.data.some((i: { id: string }) => i.id === item.body.id),
+      ).toBe(true);
 
       const notFound = await request(app.getHttpServer())
         .get('/api/v1/inventory?search=no-such-number')
@@ -1562,7 +1581,11 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Funkmikrofon Shure', type: 'UNIQUE', manufacturer: 'Shure Inc.' })
+        .send({
+          name: 'Funkmikrofon Shure',
+          type: 'UNIQUE',
+          manufacturer: 'Shure Inc.',
+        })
         .expect(201);
       const item = await request(app.getHttpServer())
         .post('/api/v1/inventory')
@@ -1589,14 +1612,18 @@ describe('Inventarsystem API (e2e)', () => {
           .get(`/api/v1/inventory?search=${encodeURIComponent(search)}`)
           .set('Authorization', `Bearer ${token}`)
           .expect(200);
-        expect(res.body.data.some((i: { id: string }) => i.id === item.body.id)).toBe(true);
+        expect(
+          res.body.data.some((i: { id: string }) => i.id === item.body.id),
+        ).toBe(true);
       }
 
       const noMatch = await request(app.getHttpServer())
         .get('/api/v1/inventory?search=NoSuchThingAtAll')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
-      expect(noMatch.body.data.some((i: { id: string }) => i.id === item.body.id)).toBe(false);
+      expect(
+        noMatch.body.data.some((i: { id: string }) => i.id === item.body.id),
+      ).toBe(false);
     });
   });
 
@@ -1720,7 +1747,8 @@ describe('Inventarsystem API (e2e)', () => {
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200)
       ).body;
-      const permByKey = (key: string) => permissions.find((p: { key: string }) => p.key === key);
+      const permByKey = (key: string) =>
+        permissions.find((p: { key: string }) => p.key === key);
 
       for (const [roleId, key] of [
         [createRole.id, 'loans.create'],
@@ -1765,10 +1793,24 @@ describe('Inventarsystem API (e2e)', () => {
         return login.body.accessToken;
       }
 
-      requesterToken = await createUserWithRoleAndGroup('requester@example.com', createRole.id);
-      managerAToken = await createUserWithRoleAndGroup('manager-a@example.com', manageRole.id, groupA.id);
-      managerBToken = await createUserWithRoleAndGroup('manager-b@example.com', manageRole.id, groupB.id);
-      administerToken = await createUserWithRoleAndGroup('administer@example.com', administerRole.id);
+      requesterToken = await createUserWithRoleAndGroup(
+        'requester@example.com',
+        createRole.id,
+      );
+      managerAToken = await createUserWithRoleAndGroup(
+        'manager-a@example.com',
+        manageRole.id,
+        groupA.id,
+      );
+      managerBToken = await createUserWithRoleAndGroup(
+        'manager-b@example.com',
+        manageRole.id,
+        groupB.id,
+      );
+      administerToken = await createUserWithRoleAndGroup(
+        'administer@example.com',
+        administerRole.id,
+      );
     });
 
     it('rejects requesting a fixed-installed item at any permission tier', async () => {
@@ -1782,7 +1824,10 @@ describe('Inventarsystem API (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${requesterToken}`)
-        .send({ borrowerName: 'Installed Test', items: [{ inventoryItemId: itemA.id }] })
+        .send({
+          borrowerName: 'Installed Test',
+          items: [{ inventoryItemId: itemA.id }],
+        })
         .expect(400);
 
       // Reset back to available for the rest of this describe block.
@@ -1846,7 +1891,11 @@ describe('Inventarsystem API (e2e)', () => {
       const returned = await request(app.getHttpServer())
         .post(`/api/v1/loans/${loanId}/return`)
         .set('Authorization', `Bearer ${managerAToken}`)
-        .send({ items: issued.body.items.map((li: { id: string }) => ({ loanItemId: li.id })) })
+        .send({
+          items: issued.body.items.map((li: { id: string }) => ({
+            loanItemId: li.id,
+          })),
+        })
         .expect(201);
       expect(returned.body.status).toBe('completed');
     });
@@ -1904,7 +1953,10 @@ describe('Inventarsystem API (e2e)', () => {
       const preApproved = await request(app.getHttpServer())
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${administerToken}`)
-        .send({ borrowerName: 'Administer Direct', items: [{ inventoryItemId: itemOne.id }] })
+        .send({
+          borrowerName: 'Administer Direct',
+          items: [{ inventoryItemId: itemOne.id }],
+        })
         .expect(201);
       expect(preApproved.body.status).toBe('approved');
 
@@ -1936,7 +1988,10 @@ describe('Inventarsystem API (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${managerBToken}`)
-        .send({ borrowerName: 'Cross-Org Attempt', items: [{ inventoryItemId: itemA.id }] })
+        .send({
+          borrowerName: 'Cross-Org Attempt',
+          items: [{ inventoryItemId: itemA.id }],
+        })
         .expect(403);
     });
 
@@ -2052,7 +2107,9 @@ describe('Inventarsystem API (e2e)', () => {
       expect(upload.body.category).toBe('document');
 
       const list = await request(app.getHttpServer())
-        .get(`/api/v1/attachments?entityType=inventoryItem&entityId=${inventoryItemId}`)
+        .get(
+          `/api/v1/attachments?entityType=inventoryItem&entityId=${inventoryItemId}`,
+        )
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(list.body).toHaveLength(1);
@@ -2061,7 +2118,9 @@ describe('Inventarsystem API (e2e)', () => {
         .get(`/api/v1/attachments/${upload.body.id}/download`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
-      expect(Buffer.from(download.body).toString('utf8')).toBe('Betriebsanleitung Inhalt');
+      expect(Buffer.from(download.body).toString('utf8')).toBe(
+        'Betriebsanleitung Inhalt',
+      );
 
       await request(app.getHttpServer())
         .delete(`/api/v1/attachments/${upload.body.id}`)
@@ -2069,7 +2128,9 @@ describe('Inventarsystem API (e2e)', () => {
         .expect(204);
 
       const listAfterDelete = await request(app.getHttpServer())
-        .get(`/api/v1/attachments?entityType=inventoryItem&entityId=${inventoryItemId}`)
+        .get(
+          `/api/v1/attachments?entityType=inventoryItem&entityId=${inventoryItemId}`,
+        )
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(listAfterDelete.body).toHaveLength(0);
@@ -2084,11 +2145,15 @@ describe('Inventarsystem API (e2e)', () => {
         .expect(201);
 
       const documents = await request(app.getHttpServer())
-        .get(`/api/v1/attachments?entityType=inventoryItem&entityId=${inventoryItemId}&category=document`)
+        .get(
+          `/api/v1/attachments?entityType=inventoryItem&entityId=${inventoryItemId}&category=document`,
+        )
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       const inspections = await request(app.getHttpServer())
-        .get(`/api/v1/attachments?entityType=inventoryItem&entityId=${inventoryItemId}&category=inspection`)
+        .get(
+          `/api/v1/attachments?entityType=inventoryItem&entityId=${inventoryItemId}&category=inspection`,
+        )
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(documents.body).toHaveLength(0);
@@ -2228,9 +2293,20 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${adminLogin.body.accessToken}`)
         .expect(200);
       expect(adminList.body.map((e: { key: string }) => e.key)).toEqual(
-        expect.arrayContaining(['loan.requested', 'loan.approved', 'loan.issued', 'loan.returned', 'backup.failed']),
+        expect.arrayContaining([
+          'loan.requested',
+          'loan.approved',
+          'loan.issued',
+          'loan.returned',
+          'backup.failed',
+        ]),
       );
-      expect(adminList.body.every((e: { enabled: boolean }) => e.enabled === false)).toBe(true);
+      // Events are opt-out, not opt-in: eligible events default to enabled
+      // so notifications actually go out without every user first having to
+      // discover and visit this settings page.
+      expect(
+        adminList.body.every((e: { enabled: boolean }) => e.enabled === true),
+      ).toBe(true);
     });
 
     it('toggles a preference the user is eligible for, and ignores one they are not', async () => {
@@ -2240,19 +2316,25 @@ describe('Inventarsystem API (e2e)', () => {
         .expect(201);
       const token = adminLogin.body.accessToken;
 
-      const enabled = await request(app.getHttpServer())
-        .put('/api/v1/notifications/preferences/loan.requested')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ enabled: true })
-        .expect(200);
-      expect(enabled.body.find((e: { key: string }) => e.key === 'loan.requested').enabled).toBe(true);
-
       const disabled = await request(app.getHttpServer())
         .put('/api/v1/notifications/preferences/loan.requested')
         .set('Authorization', `Bearer ${token}`)
         .send({ enabled: false })
         .expect(200);
-      expect(disabled.body.find((e: { key: string }) => e.key === 'loan.requested').enabled).toBe(false);
+      expect(
+        disabled.body.find((e: { key: string }) => e.key === 'loan.requested')
+          .enabled,
+      ).toBe(false);
+
+      const enabled = await request(app.getHttpServer())
+        .put('/api/v1/notifications/preferences/loan.requested')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ enabled: true })
+        .expect(200);
+      expect(
+        enabled.body.find((e: { key: string }) => e.key === 'loan.requested')
+          .enabled,
+      ).toBe(true);
 
       const viewerLogin = await request(app.getHttpServer())
         .post('/api/v1/auth/login')
@@ -2261,10 +2343,146 @@ describe('Inventarsystem API (e2e)', () => {
       const viewerAttempt = await request(app.getHttpServer())
         .put('/api/v1/notifications/preferences/loan.requested')
         .set('Authorization', `Bearer ${viewerLogin.body.accessToken}`)
-        .send({ enabled: true })
+        .send({ enabled: false })
         .expect(200);
       // Viewer has none of the required permissions, so the toggle is silently ignored.
       expect(viewerAttempt.body).toEqual([]);
+    });
+
+    it('actually delivers an event email to an eligible user with no preference row (regression: opt-in default sent to nobody)', async () => {
+      // No PUT to /notifications/preferences/backup.failed here on purpose -
+      // this checks the zero-configuration default, not an opt-in toggle.
+      // Email config was already enabled with a real host/fromAddress by the
+      // 'email configuration' tests above.
+      const sendMail = jest.fn().mockResolvedValue(undefined);
+      (nodemailer.createTransport as jest.Mock).mockReturnValue({ sendMail });
+
+      await app.get(EmailService).notifyEvent('backup.failed', 'Test', 'Body');
+
+      expect(sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'admin@example.com' }),
+      );
+    });
+  });
+
+  describe('forgot password / reset password (unauthenticated)', () => {
+    // Relies on email already being enabled with a real host/fromAddress,
+    // set up by the 'email configuration' tests above.
+    let adminToken: string;
+
+    beforeAll(async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+      adminToken = login.body.accessToken;
+    });
+
+    it('reports password-reset availability based on whether email is configured', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/auth/password-reset-available')
+        .expect(200);
+      expect(res.body).toEqual({ available: true });
+    });
+
+    it('always returns 204 for forgot-password, whether or not the address is known (no enumeration)', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/forgot-password')
+        .send({ email: 'no-such-user@example.com' })
+        .expect(204);
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/forgot-password')
+        .send({ email: 'admin@example.com' })
+        .expect(204);
+    });
+
+    it('completes a full reset: emails a working link, the token is single-use, and other sessions are revoked', async () => {
+      const user = await request(app.getHttpServer())
+        .post('/api/v1/users')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          email: 'forgotpw@example.com',
+          displayName: 'Forgot PW',
+          password: 'OriginalPass123!',
+        })
+        .expect(201);
+      void user;
+
+      const loginBefore = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'forgotpw@example.com', password: 'OriginalPass123!' })
+        .expect(201);
+      const refreshTokenBefore = loginBefore.body.refreshToken;
+
+      const sendMail = jest.fn().mockResolvedValue(undefined);
+      (nodemailer.createTransport as jest.Mock).mockReturnValue({ sendMail });
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/forgot-password')
+        .send({ email: 'forgotpw@example.com' })
+        .expect(204);
+
+      expect(sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'forgotpw@example.com' }),
+      );
+      const emailText: string = sendMail.mock.calls[0][0].text;
+      const match = /reset-password\?token=([\w-]+)/.exec(emailText);
+      const token = match?.[1];
+      expect(token).toBeTruthy();
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/reset-password')
+        .send({
+          token,
+          newPassword: 'BrandNewPass123!',
+          newPasswordConfirmation: 'DOES-NOT-MATCH!',
+        })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/reset-password')
+        .send({
+          token,
+          newPassword: 'BrandNewPass123!',
+          newPasswordConfirmation: 'BrandNewPass123!',
+        })
+        .expect(204);
+
+      // Single-use: the same token cannot be replayed.
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/reset-password')
+        .send({
+          token,
+          newPassword: 'AnotherPass123!',
+          newPasswordConfirmation: 'AnotherPass123!',
+        })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'forgotpw@example.com', password: 'OriginalPass123!' })
+        .expect(401);
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'forgotpw@example.com', password: 'BrandNewPass123!' })
+        .expect(201);
+
+      // The reset revoked pre-existing sessions.
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: refreshTokenBefore })
+        .expect(401);
+    });
+
+    it('rejects an unknown or garbage token', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/reset-password')
+        .send({
+          token: 'not-a-real-token',
+          newPassword: 'SomePass123!',
+          newPasswordConfirmation: 'SomePass123!',
+        })
+        .expect(400);
     });
   });
 
@@ -2351,14 +2569,20 @@ describe('Inventarsystem API (e2e)', () => {
       const period = await request(app.getHttpServer())
         .post('/api/v1/loans/blackout-periods')
         .set('Authorization', `Bearer ${token}`)
-        .send({ startDate: '2026-09-01', endDate: '2026-09-10', reason: 'Umbau' })
+        .send({
+          startDate: '2026-09-01',
+          endDate: '2026-09-10',
+          reason: 'Umbau',
+        })
         .expect(201);
 
       const list = await request(app.getHttpServer())
         .get('/api/v1/loans/blackout-periods')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
-      expect(list.body.some((p: { id: string }) => p.id === period.body.id)).toBe(true);
+      expect(
+        list.body.some((p: { id: string }) => p.id === period.body.id),
+      ).toBe(true);
 
       // A loans.administer actor is blocked too -- blackout periods are absolute.
       await request(app.getHttpServer())
@@ -2457,7 +2681,10 @@ describe('Inventarsystem API (e2e)', () => {
       const created = await request(app.getHttpServer())
         .post('/api/v1/loans/templates')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Sonntagsgottesdienst', items: [{ articleId, quantity: 2 }] })
+        .send({
+          name: 'Sonntagsgottesdienst',
+          items: [{ articleId, quantity: 2 }],
+        })
         .expect(201);
       expect(created.body.items).toHaveLength(1);
       expect(created.body.items[0].quantity).toBe(2);
@@ -2472,7 +2699,9 @@ describe('Inventarsystem API (e2e)', () => {
         .get('/api/v1/loans/templates')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
-      expect(list.body.some((t: { id: string }) => t.id === created.body.id)).toBe(true);
+      expect(
+        list.body.some((t: { id: string }) => t.id === created.body.id),
+      ).toBe(true);
 
       await request(app.getHttpServer())
         .delete(`/api/v1/loans/templates/${created.body.id}`)
@@ -2490,7 +2719,13 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/inventory')
           .set('Authorization', `Bearer ${token}`)
-          .send({ articleId, locationId, roomId, ownerOrganizationId: orgId, ownerUnitId: unitId })
+          .send({
+            articleId,
+            locationId,
+            roomId,
+            ownerOrganizationId: orgId,
+            ownerUnitId: unitId,
+          })
           .expect(201)
       ).body;
 
@@ -2508,7 +2743,11 @@ describe('Inventarsystem API (e2e)', () => {
         .get('/api/v1/loans/templates')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
-      expect(list.body.some((t: { name: string }) => t.name === 'Aus Ausleihe gespeichert')).toBe(true);
+      expect(
+        list.body.some(
+          (t: { name: string }) => t.name === 'Aus Ausleihe gespeichert',
+        ),
+      ).toBe(true);
     });
   });
 
@@ -2575,39 +2814,67 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'XLR Kabel 10m', type: 'UNIQUE', categoryId: categoryA.id })
+          .send({
+            name: 'XLR Kabel 10m',
+            type: 'UNIQUE',
+            categoryId: categoryA.id,
+          })
           .expect(201)
       ).body;
       const articleB = (
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'Handmikrofon', type: 'UNIQUE', categoryId: categoryB.id })
+          .send({
+            name: 'Handmikrofon',
+            type: 'UNIQUE',
+            categoryId: categoryB.id,
+          })
           .expect(201)
       ).body;
       await request(app.getHttpServer())
         .post('/api/v1/inventory')
         .set('Authorization', `Bearer ${token}`)
-        .send({ articleId: articleA.id, locationId, roomId, ownerOrganizationId: orgId, ownerUnitId: unitId })
+        .send({
+          articleId: articleA.id,
+          locationId,
+          roomId,
+          ownerOrganizationId: orgId,
+          ownerUnitId: unitId,
+        })
         .expect(201);
       await request(app.getHttpServer())
         .post('/api/v1/inventory')
         .set('Authorization', `Bearer ${token}`)
-        .send({ articleId: articleB.id, locationId, roomId, ownerOrganizationId: orgId, ownerUnitId: unitId })
+        .send({
+          articleId: articleB.id,
+          locationId,
+          roomId,
+          ownerOrganizationId: orgId,
+          ownerUnitId: unitId,
+        })
         .expect(201);
 
       const byCategory = await request(app.getHttpServer())
         .get(`/api/v1/inventory?categoryId=${categoryA.id}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
-      expect(byCategory.body.data.every((i: { articleId: string }) => i.articleId === articleA.id)).toBe(true);
+      expect(
+        byCategory.body.data.every(
+          (i: { articleId: string }) => i.articleId === articleA.id,
+        ),
+      ).toBe(true);
       expect(byCategory.body.data.length).toBeGreaterThanOrEqual(1);
 
       const bySearch = await request(app.getHttpServer())
         .get('/api/v1/inventory?search=Mikrofone')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
-      expect(bySearch.body.data.some((i: { articleId: string }) => i.articleId === articleB.id)).toBe(true);
+      expect(
+        bySearch.body.data.some(
+          (i: { articleId: string }) => i.articleId === articleB.id,
+        ),
+      ).toBe(true);
     });
 
     it('returns the checkout photo of the most recent loan for an inventory item', async () => {
@@ -2622,7 +2889,13 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/inventory')
           .set('Authorization', `Bearer ${token}`)
-          .send({ articleId: article.id, locationId, roomId, ownerOrganizationId: orgId, ownerUnitId: unitId })
+          .send({
+            articleId: article.id,
+            locationId,
+            roomId,
+            ownerOrganizationId: orgId,
+            ownerUnitId: unitId,
+          })
           .expect(201)
       ).body;
 
@@ -2636,7 +2909,10 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/loans')
           .set('Authorization', `Bearer ${token}`)
-          .send({ borrowerName: 'Photo Borrower', items: [{ inventoryItemId: item.id }] })
+          .send({
+            borrowerName: 'Photo Borrower',
+            items: [{ inventoryItemId: item.id }],
+          })
           .expect(201)
       ).body;
       const loanItemId = loan.items[0].id;

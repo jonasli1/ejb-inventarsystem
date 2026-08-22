@@ -37,12 +37,12 @@ describe('NotificationPreferencesService', () => {
   });
 
   describe('listForUser', () => {
-    it('only lists events the user is currently eligible for, with current status', async () => {
+    it('only lists events the user is currently eligible for, defaulting to enabled', async () => {
       prisma.userRole.findMany.mockResolvedValue(
         rolesWithPermissions('loans.manage'),
       );
       prisma.notificationPreference.findMany.mockResolvedValue([
-        { eventKey: 'loan.requested' },
+        { eventKey: 'loan.approved', enabled: false },
       ]);
 
       const result = await service.listForUser('user-1');
@@ -58,9 +58,11 @@ describe('NotificationPreferencesService', () => {
         ),
       ).toBe(true);
       expect(result.some((e) => e.key === 'backup.failed')).toBe(false);
+      // No row for 'loan.requested' -> defaults to enabled.
       expect(result.find((e) => e.key === 'loan.requested')?.enabled).toBe(
         true,
       );
+      // Explicit enabled:false row -> stays disabled.
       expect(result.find((e) => e.key === 'loan.approved')?.enabled).toBe(
         false,
       );
@@ -68,7 +70,7 @@ describe('NotificationPreferencesService', () => {
   });
 
   describe('setPreference', () => {
-    it('subscribes when the user holds a permission the event requires', async () => {
+    it('upserts an explicit enabled:true when the user holds a required permission', async () => {
       prisma.userRole.findMany.mockResolvedValue(
         rolesWithPermissions('settings.manage'),
       );
@@ -77,22 +79,36 @@ describe('NotificationPreferencesService', () => {
         where: {
           userId_eventKey: { userId: 'user-1', eventKey: 'backup.failed' },
         },
-        update: {},
-        create: { userId: 'user-1', eventKey: 'backup.failed' },
+        update: { enabled: true },
+        create: { userId: 'user-1', eventKey: 'backup.failed', enabled: true },
       });
     });
 
-    it('silently ignores subscribing to an event the user is not eligible for', async () => {
+    it('upserts an explicit enabled:false (opt-out) when the user holds a required permission', async () => {
+      prisma.userRole.findMany.mockResolvedValue(
+        rolesWithPermissions('settings.manage'),
+      );
+      await service.setPreference('user-1', 'backup.failed', false);
+      expect(prisma.notificationPreference.upsert).toHaveBeenCalledWith({
+        where: {
+          userId_eventKey: { userId: 'user-1', eventKey: 'backup.failed' },
+        },
+        update: { enabled: false },
+        create: {
+          userId: 'user-1',
+          eventKey: 'backup.failed',
+          enabled: false,
+        },
+      });
+    });
+
+    it('silently ignores an event the user is not eligible for', async () => {
       prisma.userRole.findMany.mockResolvedValue([]);
       await service.setPreference('user-1', 'backup.failed', true);
       expect(prisma.notificationPreference.upsert).not.toHaveBeenCalled();
-    });
 
-    it('unsubscribes regardless of current permissions', async () => {
       await service.setPreference('user-1', 'backup.failed', false);
-      expect(prisma.notificationPreference.deleteMany).toHaveBeenCalledWith({
-        where: { userId: 'user-1', eventKey: 'backup.failed' },
-      });
+      expect(prisma.notificationPreference.upsert).not.toHaveBeenCalled();
     });
   });
 

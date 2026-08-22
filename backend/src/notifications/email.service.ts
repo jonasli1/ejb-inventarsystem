@@ -4,7 +4,6 @@ import nodemailer from 'nodemailer';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { decryptSecret, encryptSecret } from '../backup/crypto.util';
-import { getEffectivePermissions } from '../common/utils/effective-permissions';
 import { NOTIFICATION_EVENT_BY_KEY } from './notification-events';
 import { UpdateEmailConfigDto } from './dto/update-email-config.dto';
 
@@ -106,6 +105,23 @@ export class EmailService {
     return { transport, fromAddress: row.fromAddress, fromName: row.fromName };
   }
 
+  /** Whether email sending is fully configured and enabled - gates features like password reset. */
+  async isConfigured(): Promise<boolean> {
+    const row = await this.prisma.emailConfig.findUnique({
+      where: { id: SINGLETON_ID },
+    });
+    return !!(row?.enabled && row.host && row.fromAddress);
+  }
+
+  private formatFrom(target: {
+    fromAddress: string;
+    fromName: string | null;
+  }): string {
+    return target.fromName
+      ? `"${target.fromName}" <${target.fromAddress}>`
+      : target.fromAddress;
+  }
+
   async sendTestEmail(toAddress: string): Promise<void> {
     const target = await this.buildTransport();
     if (!target) {
@@ -114,19 +130,37 @@ export class EmailService {
       );
     }
     await target.transport.sendMail({
-      from: target.fromName
-        ? `"${target.fromName}" <${target.fromAddress}>`
-        : target.fromAddress,
+      from: this.formatFrom(target),
       to: toAddress,
       subject: 'Test-E-Mail vom Inventarsystem',
       text: 'Diese Test-E-Mail bestätigt, dass der E-Mail-Versand korrekt konfiguriert ist.',
     });
   }
 
+  /** Direct, single-recipient transactional email - not gated by notification preferences. */
+  async sendPasswordResetEmail(
+    toAddress: string,
+    resetUrl: string,
+  ): Promise<void> {
+    const target = await this.buildTransport();
+    if (!target) return;
+    await target.transport.sendMail({
+      from: this.formatFrom(target),
+      to: toAddress,
+      subject: 'Passwort zurücksetzen',
+      text: `Zum Zurücksetzen deines Passworts klicke auf folgenden Link (gültig für 1 Stunde):\n\n${resetUrl}\n\nWenn du diese Anfrage nicht gestellt hast, kannst du diese E-Mail ignorieren - dein Passwort bleibt unverändert.`,
+    });
+  }
+
   /**
-   * Sends `subject`/`body` to every user subscribed to `eventKey`, re-checking
-   * (defensively, in case a prune hook hasn't run yet) that each recipient
-   * still holds a permission the event requires. No-op if email is disabled.
+   * Sends `subject`/`body` to every active user eligible for `eventKey` (i.e.
+   * holding at least one of the permissions it requires), except those who
+   * explicitly disabled it. Events are opt-out, not opt-in: eligibility is
+   * queried directly from roles/permissions rather than from who has a
+   * notificationPreference row, since a row's mere presence used to be the
+   * only way to be subscribed at all - meaning nobody received a single
+   * notification until they first discovered and visited their profile page
+   * to turn events on individually. No-op if email is disabled.
    */
   async notifyEvent(
     eventKey: string,
@@ -139,35 +173,42 @@ export class EmailService {
     const target = await this.buildTransport();
     if (!target) return;
 
-    const prefs = await this.prisma.notificationPreference.findMany({
-      where: { eventKey },
-      include: {
-        user: {
-          select: { id: true, email: true, isActive: true, deletedAt: true },
+    const recipients = await this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        deletedAt: null,
+        userRoles: {
+          some: {
+            role: {
+              rolePermissions: {
+                some: { permission: { key: { in: eventDef.permissions } } },
+              },
+            },
+          },
+        },
+      },
+      select: {
+        email: true,
+        notificationPreferences: {
+          where: { eventKey },
+          select: { enabled: true },
         },
       },
     });
 
-    for (const pref of prefs) {
-      if (!pref.user.isActive || pref.user.deletedAt) continue;
-      const permissions = await getEffectivePermissions(
-        this.prisma,
-        pref.user.id,
-      );
-      if (!eventDef.permissions.some((p) => permissions.has(p))) continue;
+    for (const recipient of recipients) {
+      if (recipient.notificationPreferences[0]?.enabled === false) continue;
 
       try {
         await target.transport.sendMail({
-          from: target.fromName
-            ? `"${target.fromName}" <${target.fromAddress}>`
-            : target.fromAddress,
-          to: pref.user.email,
+          from: this.formatFrom(target),
+          to: recipient.email,
           subject,
           text: body,
         });
       } catch (err) {
         this.logger.warn(
-          `Failed to send "${eventKey}" notification to ${pref.user.email}: ${String(err)}`,
+          `Failed to send "${eventKey}" notification to ${recipient.email}: ${String(err)}`,
         );
       }
     }

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Fingerprint, Package } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { getApiErrorMessage } from '@/lib/api-client';
@@ -29,6 +30,12 @@ export function LoginPage() {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+
+  const passwordResetAvailableQuery = useQuery({
+    queryKey: ['auth', 'password-reset-available'],
+    queryFn: async () =>
+      (await api.get<{ available: boolean }>('/auth/password-reset-available')).data,
+  });
 
   const onSubmit = async (values: FormValues) => {
     setServerError(null);
@@ -87,6 +94,15 @@ export function LoginPage() {
             <Field label="Passwort" error={errors.password?.message}>
               <Input type="password" autoComplete="current-password" placeholder="••••••••" {...register('password')} />
             </Field>
+
+            {passwordResetAvailableQuery.data?.available && (
+              <Link
+                to="/forgot-password"
+                className="-mt-2 self-end text-sm text-brand-600 hover:underline"
+              >
+                Passwort vergessen?
+              </Link>
+            )}
 
             {serverError && (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{serverError}</p>

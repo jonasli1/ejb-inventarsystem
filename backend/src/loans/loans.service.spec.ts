@@ -296,13 +296,20 @@ describe('LoansService', () => {
       });
 
       await service.create(
-        { ...dtoBase, checkoutDate: '2026-07-21', items: [{ inventoryItemId: 'item-1' }] },
+        {
+          ...dtoBase,
+          checkoutDate: '2026-07-21',
+          items: [{ inventoryItemId: 'item-1' }],
+        },
         administerUser,
       );
 
       expect(prisma.loanBlackoutPeriod.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { startDate: { lte: new Date('2026-07-21') }, endDate: { gte: new Date('2026-07-21') } },
+          where: {
+            startDate: { lte: new Date('2026-07-21') },
+            endDate: { gte: new Date('2026-07-21') },
+          },
         }),
       );
     });
@@ -328,7 +335,10 @@ describe('LoansService', () => {
 
       expect(prisma.loanBlackoutPeriod.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { startDate: { lte: new Date('2026-07-28') }, endDate: { gte: new Date('2026-07-21') } },
+          where: {
+            startDate: { lte: new Date('2026-07-28') },
+            endDate: { gte: new Date('2026-07-21') },
+          },
         }),
       );
     });

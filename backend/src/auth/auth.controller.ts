@@ -21,6 +21,8 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordWithTokenDto } from './dto/reset-password-with-token.dto';
 import {
   PasskeyLoginOptionsDto,
   PasskeyLoginVerifyDto,
@@ -101,6 +103,47 @@ export class AuthController {
     @Body() dto: ChangePasswordDto,
   ): Promise<void> {
     await this.authService.changePassword(user.id, dto);
+  }
+
+  // -------------------------------------------------------------------
+  // Password reset (unauthenticated - "forgot password")
+  // -------------------------------------------------------------------
+
+  @Public()
+  @Get('password-reset-available')
+  @ApiOperation({
+    summary:
+      'Whether email is configured, i.e. whether "forgot password" can deliver a reset link',
+  })
+  async passwordResetAvailable(): Promise<{ available: boolean }> {
+    return { available: await this.authService.isPasswordResetAvailable() };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: AUTH_THROTTLE_TTL } })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('forgot-password')
+  @ApiOperation({
+    summary:
+      'Request a password-reset email. Always succeeds, whether or not the address is known.',
+  })
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<void> {
+    await this.authService.requestPasswordReset(dto.email);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: AUTH_THROTTLE_TTL } })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('reset-password')
+  @ApiOperation({
+    summary: 'Complete a password reset using the token from the email link',
+  })
+  async resetPassword(@Body() dto: ResetPasswordWithTokenDto): Promise<void> {
+    await this.authService.resetPasswordWithToken(
+      dto.token,
+      dto.newPassword,
+      dto.newPasswordConfirmation,
+    );
   }
 
   // -------------------------------------------------------------------
