@@ -37,13 +37,24 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    # Kein oeffentlicher Port und kein Zertifikat mehr noetig:
+    # Caddy ist der einzige Eingang von aussen und liefert das HTTPS.
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - frontend
     ports:
       - '80:80'
       - '443:443'
     volumes:
-      - nginx_certs:/etc/nginx/certs
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # WICHTIG: speichert die Zertifikate dauerhaft
+      - caddy_config:/config
 
 volumes:
   postgres_data:
   uploads_data:
-  nginx_certs:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,9 @@
+# E-Mail fuer Let's Encrypt (Ablauf-Benachrichtigungen) - deine Adresse eintragen
+{
+	email jonas@lindner.app
+}
+
+# Deine Domain - hier durch die echte ersetzen
+ejb.lindner.app {
+	reverse_proxy frontend:80
+}

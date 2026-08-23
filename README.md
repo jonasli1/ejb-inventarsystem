@@ -309,8 +309,7 @@ docker compose down -v --rmi all
 
 | Problem | Lösung |
 |---|---|
-| `docker compose up` schlägt mit „port is already allocated“ fehl | Ein anderer Dienst belegt bereits Port 8080 bzw. 8443. In `docker-compose.yml` bei `frontend` → `ports` z. B. `'8081:80'` bzw. `'8444:443'` eintragen und erneut starten. |
-| Browser warnt bei `https://…:8443` vor einem unsicheren Zertifikat | Erwartet bei dem automatisch erzeugten selbstsignierten Zertifikat (siehe [Schritt 8](#schritt-8-https-aktivieren)) – Warnung akzeptieren oder ein echtes Zertifikat installieren. |
+| `docker compose up` schlägt mit „port is already allocated“ fehl | Ein anderer Dienst belegt bereits Port 8080. In `docker-compose.yml` bei `frontend` → `ports` z. B. `'8081:80'` statt `'8080:80'` eintragen und erneut starten. |
 | Seite lädt, aber Login schlägt fehl / „Netzwerkfehler“ | `docker compose ps` prüfen, ob `backend` läuft; `docker compose logs backend` auf Fehler prüfen. Häufigste Ursache: Migrationen aus Schritt 5 wurden nach einem Update nicht erneut ausgeführt. |
 | Container `backend` startet nicht, Logs zeigen Prisma-/DB-Fehler | Kurz warten und `docker compose ps` erneut prüfen – `backend` wartet automatisch, bis `postgres` „healthy“ ist. Bleibt der Fehler bestehen: `docker compose logs postgres` prüfen. |
 | Passwort vergessen | Neuer Admin-Zugang über: `docker compose exec backend npx prisma db seed` (legt fehlende Rollen/den Admin aus `.env` erneut an, ändert aber ein bereits vorhandenes Passwort nicht) – alternativ das Passwort-Hash-Feld eines Nutzers direkt über einen zweiten Admin-Account in der Oberfläche zurücksetzen lassen. |
