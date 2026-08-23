@@ -104,7 +104,9 @@ docker compose exec backend npx prisma migrate deploy
 docker compose exec backend npx prisma db seed   # optional, für Beispieldaten
 ```
 
-Danach ist das Frontend unter `http://localhost:8080` erreichbar. Der Backend-Container erhält
+Danach ist das Frontend unter `http://localhost:8080` erreichbar, sowie per HTTPS (selbstsigniertes
+Zertifikat, automatisch erzeugt) unter `https://localhost:8443` – siehe „HTTPS aktivieren“ im
+Root-`README.md` für ein echtes Zertifikat. Der Backend-Container erhält
 ein benanntes Volume (`uploads_data`) für hochgeladene Dateien (Artikel-/Objekt-Anhänge,
 Ausleihe-Fotos) – dieses Verzeichnis muss beim Backup mit gesichert werden (die eingebaute
 Backup-Funktion unter „Backup“ im Frontend tut das automatisch).

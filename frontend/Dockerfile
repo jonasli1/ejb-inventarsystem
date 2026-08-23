@@ -9,6 +9,13 @@ COPY . .
 RUN npm run build
 
 FROM nginx:1.27-alpine AS runtime
+# openssl CLI (not present by default) is used by
+# docker-entrypoint.d/10-self-signed-cert.sh to generate a fallback HTTPS
+# certificate on first start.
+RUN apk add --no-cache openssl
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+COPY nginx-locations.conf /etc/nginx/locations.conf
+COPY docker-entrypoint.d/10-self-signed-cert.sh /docker-entrypoint.d/10-self-signed-cert.sh
+RUN chmod +x /docker-entrypoint.d/10-self-signed-cert.sh
+EXPOSE 80 443

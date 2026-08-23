@@ -184,13 +184,58 @@ bevor die Container neu gestartet werden (`docker compose up -d --build`):
 | `CHURCHTOOLS_REDIRECT_URI` | `<Adresse-der-Weboberfläche>/auth/churchtools/callback` |
 | `MS_REDIRECT_URI` | `<Adresse-der-Weboberfläche>/settings/backup/onedrive/callback` (nur bei OneDrive-Backup) |
 
-Browser verlangen für WebAuthn/Passkeys grundsätzlich **HTTPS** (Ausnahme: `localhost`). Für
-einen produktiven Betrieb außerhalb des eigenen Rechners empfiehlt sich daher ein
-Reverse-Proxy mit TLS-Zertifikat (z. B. [Caddy](https://caddyserver.com/) oder
-[Traefik](https://traefik.io/traefik/)) vor dem `frontend`-Container, der Zertifikate z. B.
-automatisch über Let's Encrypt bezieht. `CORS_ORIGIN` muss dafür nicht angepasst werden – der
-Browser spricht in dieser Architektur immer nur mit `frontend`, welches `/api`-Aufrufe intern
-(serverseitig, ohne CORS) an `backend` weiterreicht.
+Browser verlangen für WebAuthn/Passkeys grundsätzlich **HTTPS** (Ausnahme: `localhost`) – dafür
+bringt `frontend` bereits eine eigene HTTPS-Konfiguration mit, siehe nächster Abschnitt.
+`CORS_ORIGIN` muss dabei nicht angepasst werden – der Browser spricht in dieser Architektur immer
+nur mit `frontend`, welches `/api`-Aufrufe intern (serverseitig, ohne CORS) an `backend`
+weiterreicht.
+
+### Schritt 8: HTTPS aktivieren
+
+Der `frontend`-Container terminiert TLS direkt selbst – zusätzlich zu Port `8080` (HTTP) ist
+immer auch Port **`8443` (HTTPS)** verfügbar, ganz ohne separaten Reverse-Proxy. Beim
+allerersten Start erzeugt der Container automatisch ein **selbstsigniertes Zertifikat** und
+legt es dauerhaft im Docker-Volume `nginx_certs` ab (übersteht `docker compose down`/Neubauten,
+nicht aber `down -v`) – danach ist ohne weiteres Zutun erreichbar:
+
+```
+https://localhost:8443
+```
+
+Browser zeigen für ein selbstsigniertes Zertifikat eine Sicherheitswarnung (z. B. „Verbindung ist
+nicht privat“) – das ist normal und kein Fehler, die Verbindung ist trotzdem verschlüsselt. Für
+den Einsatz auf einem einzelnen Gerät oder im vertrauten LAN reicht das meist aus (Warnung einmal
+akzeptieren); für Passkeys genügt technisch auch ein selbstsigniertes Zertifikat, sobald der
+Browser die Warnung akzeptiert hat.
+
+#### Eigenes/echtes Zertifikat verwenden
+
+Für ein Zertifikat einer echten Zertifizierungsstelle (z. B. Let's Encrypt) oder eines internen
+CAs `fullchain.pem` und `privkey.pem` in das Volume kopieren und den Container neu starten:
+
+```bash
+docker cp fullchain.pem ejb-inventarsystem-frontend-1:/etc/nginx/certs/fullchain.pem
+docker cp privkey.pem ejb-inventarsystem-frontend-1:/etc/nginx/certs/privkey.pem
+docker compose restart frontend
+```
+
+*(Containername ggf. mit `docker compose ps` prüfen, falls abweichend.)*
+
+Alternativ lässt sich in `docker-compose.yml` statt des benannten Volumes ein Host-Verzeichnis
+mounten, um Zertifikate direkt vom Host aus zu verwalten – praktisch in Kombination mit
+`certbot` im Webroot-Modus gegen Port 8080, sofern ein öffentlicher Domainname auf dieses Gerät
+zeigt (Zertifikat muss dann bei Ablauf regelmäßig erneuert und erneut kopiert werden, da hierfür
+keine automatische Erneuerung eingerichtet ist):
+
+```yaml
+  frontend:
+    volumes:
+      - /pfad/zu/deinen/zertifikaten:/etc/nginx/certs
+```
+
+Nach einem Zertifikatswechsel bzw. beim Umstieg auf HTTPS insgesamt nicht vergessen, `WEBAUTHN_ORIGIN`,
+`CHURCHTOOLS_REDIRECT_URI` und `MS_REDIRECT_URI` in `backend/.env` auf die `https://`-Adresse
+umzustellen (siehe [Schritt 7](#schritt-7-zugriff-von-anderen-geräten--eigene-domain)).
 
 ---
 
@@ -233,6 +278,7 @@ Zusätzlich landen alle Daten in zwei benannten Docker-Volumes, die `docker comp
 |---|---|
 | `postgres_data` | die Datenbank |
 | `uploads_data` | hochgeladene Dateien (Artikel-/Objekt-Anhänge, Ausleihe-Fotos) |
+| `nginx_certs` | HTTPS-Zertifikat (siehe [Schritt 8](#schritt-8-https-aktivieren)) |
 
 **Nur `docker compose down -v` (mit `-v`) löscht diese Volumes und damit sämtliche Daten
 unwiderruflich** – dieser Befehl sollte nur bewusst verwendet werden (z. B. bei einer
@@ -263,7 +309,8 @@ docker compose down -v --rmi all
 
 | Problem | Lösung |
 |---|---|
-| `docker compose up` schlägt mit „port is already allocated“ fehl | Ein anderer Dienst belegt bereits Port 8080. In `docker-compose.yml` bei `frontend` → `ports` z. B. `'8081:80'` statt `'8080:80'` eintragen und erneut starten. |
+| `docker compose up` schlägt mit „port is already allocated“ fehl | Ein anderer Dienst belegt bereits Port 8080 bzw. 8443. In `docker-compose.yml` bei `frontend` → `ports` z. B. `'8081:80'` bzw. `'8444:443'` eintragen und erneut starten. |
+| Browser warnt bei `https://…:8443` vor einem unsicheren Zertifikat | Erwartet bei dem automatisch erzeugten selbstsignierten Zertifikat (siehe [Schritt 8](#schritt-8-https-aktivieren)) – Warnung akzeptieren oder ein echtes Zertifikat installieren. |
 | Seite lädt, aber Login schlägt fehl / „Netzwerkfehler“ | `docker compose ps` prüfen, ob `backend` läuft; `docker compose logs backend` auf Fehler prüfen. Häufigste Ursache: Migrationen aus Schritt 5 wurden nach einem Update nicht erneut ausgeführt. |
 | Container `backend` startet nicht, Logs zeigen Prisma-/DB-Fehler | Kurz warten und `docker compose ps` erneut prüfen – `backend` wartet automatisch, bis `postgres` „healthy“ ist. Bleibt der Fehler bestehen: `docker compose logs postgres` prüfen. |
 | Passwort vergessen | Neuer Admin-Zugang über: `docker compose exec backend npx prisma db seed` (legt fehlende Rollen/den Admin aus `.env` erneut an, ändert aber ein bereits vorhandenes Passwort nicht) – alternativ das Passwort-Hash-Feld eines Nutzers direkt über einen zweiten Admin-Account in der Oberfläche zurücksetzen lassen. |

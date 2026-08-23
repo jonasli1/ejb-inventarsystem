@@ -38,8 +38,12 @@ services:
     depends_on:
       - backend
     ports:
-      - '8080:80'
+      - '80:80'
+      - '443:443'
+    volumes:
+      - nginx_certs:/etc/nginx/certs
 
 volumes:
   postgres_data:
   uploads_data:
+  nginx_certs:
