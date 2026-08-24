@@ -32,10 +32,10 @@ import { LOAN_STATUS_LABEL } from '@/lib/status-labels';
 import { LoanDetailModal } from '../loans/LoanDetailModal';
 
 const STATUS_TONE_CLASS: Record<string, string> = {
-  requested: 'bg-amber-100 text-amber-800',
-  approved: 'bg-blue-100 text-blue-800',
+  requested: 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300',
+  approved: 'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300',
   issued: 'bg-brand-100 text-brand-800',
-  completed: 'bg-emerald-100 text-emerald-800',
+  completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300',
 };
 
 function loanIntervalOverlapsDay(loan: CalendarLoanEntry, day: Date): boolean {
@@ -121,7 +121,7 @@ export function CalendarPage() {
                 <div
                   key={day.toISOString()}
                   title={isBlocked ? dayBlackouts.map((p) => p.reason ?? 'Sperrzeit').join(', ') : undefined}
-                  className={`min-h-[100px] p-1.5 ${isBlocked ? 'bg-red-50' : 'bg-white'} ${!isSameMonth(day, month) ? 'opacity-40' : ''}`}
+                  className={`min-h-[100px] p-1.5 ${isBlocked ? 'bg-red-50 dark:bg-red-500/10' : 'bg-surface'} ${!isSameMonth(day, month) ? 'opacity-40' : ''}`}
                 >
                   <p
                     className={`mb-1 inline-flex h-5 w-5 items-center justify-center rounded-full text-xs ${

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Fingerprint, KeyRound, Mail, ShieldCheck, UsersRound } from 'lucide-react';
+import { Bell, Fingerprint, KeyRound, Mail, Moon, ShieldCheck, Sun, UsersRound } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { api, getApiErrorMessage } from '@/lib/api-client';
-import type { NotificationPreferenceEntry } from '@/lib/api-types';
+import type { NotificationPreferenceEntry, ThemePreference } from '@/lib/api-types';
+import { applyTheme } from '@/lib/theme';
 import { registerPasskey, isWebAuthnSupported } from '@/features/auth/passkey';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -12,6 +13,12 @@ import { Badge } from '@/components/ui/Badge';
 import { Field, Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/toast';
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: 'light', label: 'Hell' },
+  { value: 'dark', label: 'Dunkel' },
+  { value: 'system', label: 'System' },
+];
 
 export function ProfilePage() {
   const { me, refreshMe, logout } = useAuth();
@@ -170,7 +177,7 @@ export function ProfilePage() {
                   />
                 </Field>
                 {passwordError && (
-                  <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{passwordError}</p>
+                  <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{passwordError}</p>
                 )}
                 <Button type="submit" className="self-start" loading={changePasswordMutation.isPending}>
                   <KeyRound size={16} />
@@ -187,6 +194,15 @@ export function ProfilePage() {
 
         <Card>
           <CardHeader>
+            <CardTitle>Darstellung</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <ThemePreferenceControl />
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Benachrichtigungen</CardTitle>
           </CardHeader>
           <CardBody>
@@ -194,6 +210,44 @@ export function ProfilePage() {
           </CardBody>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function ThemePreferenceControl() {
+  const { me, refreshMe } = useAuth();
+  const toast = useToast();
+
+  const mutation = useMutation({
+    mutationFn: async (theme: ThemePreference) =>
+      (await api.put<{ themePreference: ThemePreference }>('/auth/theme', { theme })).data,
+    onSuccess: async () => {
+      await refreshMe();
+    },
+    onError: (err) => toast.push(getApiErrorMessage(err), 'error'),
+  });
+
+  const current = me?.themePreference ?? 'system';
+
+  return (
+    <div className="flex gap-1 rounded-lg border border-border p-0.5">
+      {THEME_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => {
+            applyTheme(opt.value);
+            mutation.mutate(opt.value);
+          }}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium ${
+            current === opt.value ? 'bg-brand-50 text-brand-700' : 'text-muted'
+          }`}
+        >
+          {opt.value === 'light' && <Sun size={15} />}
+          {opt.value === 'dark' && <Moon size={15} />}
+          {opt.label}
+        </button>
+      ))}
     </div>
   );
 }

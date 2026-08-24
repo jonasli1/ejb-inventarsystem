@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { Spinner } from '@/components/ui/Spinner';
 import { ExportButtons } from '@/components/ui/ExportButtons';
+import { ArticleImageThumbnail } from '@/components/ui/ArticleImageThumbnail';
 import { downloadExport } from '@/lib/export';
 import { useAuth } from '@/auth/useAuth';
 import { PERMISSIONS } from '@/lib/permissions';
@@ -212,7 +213,7 @@ export function InventoryPage() {
               onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
             />
             {searchFocused && debouncedSearch.trim().length >= 2 && (
-              <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-white shadow-md">
+              <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-surface shadow-md">
                 {suggestionsQuery.isLoading ? (
                   <p className="px-3 py-2 text-sm text-muted">Suche …</p>
                 ) : suggestionsQuery.data && suggestionsQuery.data.length > 0 ? (
@@ -368,6 +369,7 @@ function ItemsTable({
         {!nested && (
           <thead>
             <tr className="border-b border-border text-left text-xs font-medium text-muted">
+              <th className="w-14 px-5 py-2.5" />
               <th className="px-5 py-2.5">Inventarnummer</th>
               <th className="px-5 py-2.5">Artikel</th>
               <th className="px-5 py-2.5">Status</th>
@@ -383,9 +385,10 @@ function ItemsTable({
               onClick={() => onSelect(item)}
               className={`cursor-pointer border-b border-border last:border-0 hover:bg-canvas ${nested ? 'bg-canvas/40' : ''}`}
             >
-              <td className={`py-2.5 font-mono text-xs text-ink ${nested ? 'pl-12 pr-5' : 'px-5'}`}>
-                {item.inventoryNumber}
+              <td className={`py-2.5 ${nested ? 'pl-12' : 'pl-5'}`}>
+                <ArticleImageThumbnail articleId={item.articleId} size="h-8 w-8" />
               </td>
+              <td className="px-5 py-2.5 font-mono text-xs text-ink">{item.inventoryNumber}</td>
               <td className="px-5 py-2.5 text-ink">{item.article.name}</td>
               <td className="px-5 py-2.5">
                 <InventoryStatusBadge status={item.status} />

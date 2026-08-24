@@ -17,11 +17,14 @@ export interface TokenResponse {
 
 export type AuthProvider = 'local' | 'churchtools' | 'passkey';
 
+export type ThemePreference = 'light' | 'dark' | 'system';
+
 export interface MeResponse {
   id: string;
   email: string;
   displayName: string;
   isActive: boolean;
+  themePreference: ThemePreference;
   createdAt: string;
   authMethods: AuthProvider[];
   roles: { id: string; name: string }[];
@@ -56,8 +59,16 @@ export interface Group {
   name: string;
   externalRef: string | null;
   description: string | null;
-  organizationId: string | null;
-  organization?: Organization | null;
+  organizationScopes?: GroupOrganizationScope[];
+}
+
+export interface GroupOrganizationScope {
+  id: string;
+  groupId: string;
+  organizationId: string;
+  organizationUnitId: string | null;
+  organization: Organization;
+  organizationUnit: OrganizationUnit | null;
 }
 
 export interface UserGroupMembership {
@@ -192,6 +203,7 @@ export interface StockMovement {
   note: string | null;
   createdAt: string;
   user: { id: string; displayName: string } | null;
+  loanItem: { id: string; loanId: string } | null;
 }
 
 export type AuditEntityType =
@@ -230,6 +242,9 @@ export interface LoanItem {
   checkedOutCondition: number | null;
   returnedCondition: number | null;
   returnedAt: string | null;
+  approvedAt: string | null;
+  approvedByUserId: string | null;
+  approvedBy: { id: string; displayName: string } | null;
   inventoryItem: InventoryItem;
 }
 
@@ -314,11 +329,6 @@ export interface Attachment {
   uploadedBy: { id: string; displayName: string } | null;
 }
 
-export interface LastLoanPhotos {
-  loanId: string | null;
-  attachments: Attachment[];
-}
-
 // -----------------------------------------------------------------------
 // Backup
 // -----------------------------------------------------------------------
@@ -352,6 +362,18 @@ export interface EmailConfig {
   passwordSet: boolean;
   fromAddress: string | null;
   fromName: string | null;
+}
+
+export interface AppSettingsConfig {
+  displayName: string;
+  churchToolsEnabled: boolean;
+  passkeyEnabled: boolean;
+  logoDataUrl: string | null;
+}
+
+export interface PublicAppSettingsConfig extends AppSettingsConfig {
+  churchToolsAvailable: boolean;
+  passkeyAvailable: boolean;
 }
 
 export interface NotificationPreferenceEntry {

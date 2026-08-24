@@ -48,12 +48,6 @@ export class InventoryController {
     return this.inventoryService.getMovements(id);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
-  @Get(':id/last-loan-photos')
-  getLastLoanPhotos(@Param('id', ParseUUIDPipe) id: string) {
-    return this.inventoryService.getLastLoanPhotos(id);
-  }
-
   @RequirePermissions(PERMISSIONS.INVENTORY_MANAGE)
   @Post()
   create(

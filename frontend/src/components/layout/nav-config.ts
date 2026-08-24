@@ -13,6 +13,8 @@ import {
   History,
   DatabaseBackup,
   Mail,
+  Settings,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { PERMISSIONS, type PermissionRequirement } from '@/lib/permissions';
 
@@ -21,7 +23,38 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   permission?: PermissionRequirement;
+  children?: NavItem[];
 }
+
+const SETTINGS_CHILDREN: NavItem[] = [
+  {
+    to: '/settings/general',
+    label: 'Allgemein',
+    icon: SlidersHorizontal,
+    permission: PERMISSIONS.SETTINGS_MANAGE,
+  },
+  {
+    to: '/settings/email',
+    label: 'E-Mail-Server',
+    icon: Mail,
+    permission: PERMISSIONS.SETTINGS_MANAGE,
+  },
+  {
+    to: '/settings/backup',
+    label: 'Backup',
+    icon: DatabaseBackup,
+    permission: PERMISSIONS.SETTINGS_MANAGE,
+  },
+  { to: '/users', label: 'Benutzer', icon: Users, permission: PERMISSIONS.USERS_MANAGE },
+  { to: '/roles', label: 'Rollen', icon: ShieldCheck, permission: PERMISSIONS.ROLES_MANAGE },
+  { to: '/groups', label: 'Gruppen', icon: UsersRound, permission: PERMISSIONS.GROUPS_MANAGE },
+  {
+    to: '/organizations',
+    label: 'Organisationen',
+    icon: Building2,
+    permission: PERMISSIONS.INVENTORY_VIEW,
+  },
+];
 
 export const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -36,6 +69,7 @@ export const NAV_ITEMS: NavItem[] = [
       PERMISSIONS.LOANS_CREATE,
       PERMISSIONS.LOANS_VIEW,
       PERMISSIONS.LOANS_MANAGE,
+      PERMISSIONS.LOANS_SPEND,
       PERMISSIONS.LOANS_ADMINISTER,
     ],
   },
@@ -43,28 +77,21 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/calendar',
     label: 'Kalender',
     icon: CalendarDays,
-    permission: [PERMISSIONS.LOANS_VIEW, PERMISSIONS.LOANS_MANAGE, PERMISSIONS.LOANS_ADMINISTER],
-  },
-  {
-    to: '/organizations',
-    label: 'Organisationen',
-    icon: Building2,
-    permission: PERMISSIONS.INVENTORY_VIEW,
+    permission: [
+      PERMISSIONS.LOANS_VIEW,
+      PERMISSIONS.LOANS_MANAGE,
+      PERMISSIONS.LOANS_SPEND,
+      PERMISSIONS.LOANS_ADMINISTER,
+    ],
   },
   { to: '/activity', label: 'Aktivitäten', icon: History, permission: PERMISSIONS.INVENTORY_VIEW },
-  { to: '/users', label: 'Benutzer', icon: Users, permission: PERMISSIONS.USERS_MANAGE },
-  { to: '/roles', label: 'Rollen', icon: ShieldCheck, permission: PERMISSIONS.ROLES_MANAGE },
-  { to: '/groups', label: 'Gruppen', icon: UsersRound, permission: PERMISSIONS.GROUPS_MANAGE },
   {
-    to: '/settings/backup',
-    label: 'Backup',
-    icon: DatabaseBackup,
-    permission: PERMISSIONS.SETTINGS_MANAGE,
-  },
-  {
-    to: '/settings/email',
-    label: 'E-Mail-Server',
-    icon: Mail,
-    permission: PERMISSIONS.SETTINGS_MANAGE,
+    to: '/settings',
+    label: 'Einstellungen',
+    icon: Settings,
+    permission: SETTINGS_CHILDREN.flatMap((c) =>
+      Array.isArray(c.permission) ? c.permission : c.permission ? [c.permission] : [],
+    ),
+    children: SETTINGS_CHILDREN,
   },
 ];

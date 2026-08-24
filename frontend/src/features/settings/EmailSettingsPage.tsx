@@ -152,7 +152,7 @@ export function EmailSettingsPage() {
           </div>
 
           {testResult && (
-            <p className={`text-sm ${testResult.ok ? 'text-emerald-700' : 'text-red-700'}`}>{testResult.message}</p>
+            <p className={`text-sm ${testResult.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>{testResult.message}</p>
           )}
 
           <div className="flex justify-end">

@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Package, Tag } from 'lucide-react';
 import { api } from '@/lib/api-client';
 import { useArticles } from '@/lib/reference-data';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import type { Article, InventoryItem, PaginatedResult } from '@/lib/api-types';
 import { Input } from '@/components/ui/Input';
+import { ArticleImageThumbnail } from '@/components/ui/ArticleImageThumbnail';
 
 interface Row {
   kind: 'article' | 'item';
@@ -117,7 +117,7 @@ export function ItemSearchSelect({
         }}
       />
       {focused && debounced.trim().length >= 2 && (
-        <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-white shadow-md">
+        <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-surface shadow-md">
           {query.isLoading ? (
             <p className="px-3 py-2 text-sm text-muted">Suche …</p>
           ) : rows.length > 0 ? (
@@ -137,7 +137,7 @@ export function ItemSearchSelect({
                   >
                     {row.kind === 'article' ? (
                       <>
-                        <Package size={14} className="shrink-0 text-muted" />
+                        <ArticleImageThumbnail articleId={row.article!.id} size="h-8 w-8" />
                         <span className="flex-1">
                           <span className="text-ink">{row.article!.name}</span>
                           <span className="ml-1.5 text-xs text-muted">
@@ -147,7 +147,7 @@ export function ItemSearchSelect({
                       </>
                     ) : (
                       <>
-                        <Tag size={14} className="mt-0.5 shrink-0 text-muted" />
+                        <ArticleImageThumbnail articleId={row.item!.article.id} size="h-8 w-8" />
                         <span className="flex flex-1 flex-col">
                           <span className="text-ink">
                             {row.item!.article.name}{' '}

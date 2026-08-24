@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Put,
   Query,
   Req,
 } from '@nestjs/common';
@@ -21,6 +22,7 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { UpdateThemeDto } from './dto/update-theme.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordWithTokenDto } from './dto/reset-password-with-token.dto';
 import {
@@ -105,6 +107,18 @@ export class AuthController {
     await this.authService.changePassword(user.id, dto);
   }
 
+  @ApiBearerAuth()
+  @Put('theme')
+  @ApiOperation({
+    summary: "Set the current user's dark-mode preference (light/dark/system)",
+  })
+  updateTheme(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateThemeDto,
+  ) {
+    return this.authService.updateTheme(user.id, dto.theme);
+  }
+
   // -------------------------------------------------------------------
   // Password reset (unauthenticated - "forgot password")
   // -------------------------------------------------------------------
@@ -153,8 +167,9 @@ export class AuthController {
   @Public()
   @Get('churchtools/start')
   @ApiOperation({ summary: 'Start the ChurchTools OAuth2 (PKCE) login flow' })
-  churchToolsStart() {
-    const { url, state } = this.authService.getChurchToolsAuthorizationUrl();
+  async churchToolsStart() {
+    const { url, state } =
+      await this.authService.getChurchToolsAuthorizationUrl();
     return { authorizationUrl: url, state };
   }
 

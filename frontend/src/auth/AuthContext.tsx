@@ -3,6 +3,7 @@ import { api, refreshAccessToken } from '@/lib/api-client';
 import { tokenStore } from '@/lib/token-store';
 import type { MeResponse, TokenResponse } from '@/lib/api-types';
 import type { PermissionKey } from '@/lib/permissions';
+import { applyTheme } from '@/lib/theme';
 
 interface AuthContextValue {
   status: 'loading' | 'authenticated' | 'unauthenticated';
@@ -25,6 +26,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await api.get<MeResponse>('/auth/me');
     setMe(res.data);
     setStatus('authenticated');
+    // Reconciles with the server's authoritative value (e.g. changed on
+    // another device) - the cached value from localStorage was only ever a
+    // fast-path guess to avoid a flash of the wrong theme on first paint.
+    applyTheme(res.data.themePreference);
   }, []);
 
   const bootstrap = useCallback(async () => {

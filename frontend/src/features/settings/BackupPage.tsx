@@ -148,10 +148,10 @@ export function BackupPage() {
           </div>
 
           {pendingFile && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-500/10">
               <div className="mb-2 flex items-start gap-2">
-                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-600" />
-                <p className="text-sm text-red-800">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-600 dark:text-red-400" />
+                <p className="text-sm text-red-800 dark:text-red-200">
                   <strong>Achtung:</strong> Das Einspielen von &bdquo;{pendingFile.name}&ldquo; überschreibt
                   <strong> alle</strong> aktuellen Daten (Datenbank und Dateien) unwiderruflich. Zur
                   Bestätigung bitte <code className="rounded bg-black/10 px-1">{CONFIRM_PHRASE}</code>{' '}
@@ -281,7 +281,7 @@ export function BackupPage() {
           {config.lastRunAt && (
             <p className="text-xs text-muted">
               Letzter Lauf: {format(new Date(config.lastRunAt), 'dd.MM.yyyy HH:mm')} –{' '}
-              <span className={config.lastRunStatus === 'success' ? 'text-emerald-700' : 'text-red-700'}>
+              <span className={config.lastRunStatus === 'success' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}>
                 {config.lastRunStatus === 'success' ? 'erfolgreich' : 'Fehler'}
               </span>
               {config.lastRunMessage ? ` (${config.lastRunMessage})` : ''}
@@ -289,7 +289,7 @@ export function BackupPage() {
           )}
 
           {testResult && (
-            <p className={`text-sm ${testResult.ok ? 'text-emerald-700' : 'text-red-700'}`}>
+            <p className={`text-sm ${testResult.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
               {testResult.message}
             </p>
           )}

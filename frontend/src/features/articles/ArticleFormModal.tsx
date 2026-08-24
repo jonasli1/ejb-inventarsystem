@@ -97,7 +97,7 @@ export function ArticleFormModal({
         </Field>
         <Field label="Beschreibung (optional)">
           <textarea
-            className="w-full rounded-lg border border-border bg-white p-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+            className="w-full rounded-lg border border-border bg-surface p-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
             rows={2}
             {...register('description')}
           />

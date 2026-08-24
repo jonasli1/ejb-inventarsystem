@@ -15,7 +15,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate } from '../common/dto/pagination-query.dto';
 import { AuditService } from '../audit/audit.service';
-import { GroupsService } from '../groups/groups.service';
+import { GroupsService, type LoanScopeEntry } from '../groups/groups.service';
 import { LoanTemplatesService } from './loan-templates.service';
 import { EmailService } from '../notifications/email.service';
 import { PERMISSIONS } from '../common/constants/permissions';
@@ -24,11 +24,17 @@ import { CreateLoanDto, CreateLoanItemDto } from './dto/create-loan.dto';
 import { UpdateLoanDto } from './dto/update-loan.dto';
 import { ReturnLoanDto } from './dto/return-loan.dto';
 import { IssueLoanDto } from './dto/issue-loan.dto';
+import { ApproveLoanDto } from './dto/approve-loan.dto';
 import { QueryLoanDto } from './dto/query-loan.dto';
 
 const LOAN_INCLUDE = {
   lentBy: { select: { id: true, displayName: true, email: true } },
-  items: { include: { inventoryItem: { include: { article: true } } } },
+  items: {
+    include: {
+      inventoryItem: { include: { article: true } },
+      approvedBy: { select: { id: true, displayName: true } },
+    },
+  },
 } satisfies Prisma.LoanInclude;
 
 // A loan is a "live" claim on an inventory item's future availability while
@@ -131,9 +137,60 @@ export class LoansService {
     return null;
   }
 
-  /** Throws unless the actor may approve/issue/return/edit/reset this loan. */
-  private async assertCanManageLoan(
-    loan: { items: { inventoryItem: { ownerOrganizationId: string } }[] },
+  /** Whether an item's (org, unit) falls within any of the given scope entries. */
+  private isItemInScope(
+    scope: LoanScopeEntry[],
+    item: { ownerOrganizationId: string; ownerUnitId: string },
+  ): boolean {
+    return scope.some(
+      (s) =>
+        s.organizationId === item.ownerOrganizationId &&
+        (s.organizationUnitId === null ||
+          s.organizationUnitId === item.ownerUnitId),
+    );
+  }
+
+  /** create()'s loans.manage fast-path: a hard block, not just an approval gate. */
+  private async assertItemsWithinActorScope(
+    items: Pick<
+      InventoryItem,
+      'id' | 'inventoryNumber' | 'ownerOrganizationId' | 'ownerUnitId'
+    >[],
+    userId: string,
+  ): Promise<void> {
+    const scope = await this.groups.getLoanScopeForUser(userId);
+    const outOfScope = items.find((i) => !this.isItemInScope(scope, i));
+    if (outOfScope) {
+      throw new ForbiddenException(
+        `Inventory item ${outOfScope.inventoryNumber} does not belong to one of your organizations/units.`,
+      );
+    }
+  }
+
+  /**
+   * update(): the loan's creator may always edit it, even with only
+   * loans.create. loans.manage may edit ANY loan, unconditionally (no org/unit
+   * check - unlike approving, which stays scoped). loans.administer as ever.
+   */
+  private assertCanEditLoan(
+    loan: { lentByUserId: string },
+    user: AuthenticatedUser,
+  ): void {
+    if (loan.lentByUserId === user.id) return;
+    if (user.permissions.includes(PERMISSIONS.LOANS_MANAGE)) return;
+    if (user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER)) return;
+    throw new ForbiddenException(
+      'You do not have permission to edit this loan.',
+    );
+  }
+
+  /** resetStatus(): mirrors the pre-split whole-loan manage/administer check. */
+  private async assertCanResetStatus(
+    loan: {
+      items: {
+        inventoryItem: { ownerOrganizationId: string; ownerUnitId: string };
+      }[];
+    },
     user: AuthenticatedUser,
   ): Promise<void> {
     if (user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER)) return;
@@ -142,37 +199,135 @@ export class LoansService {
         'You do not have permission to manage this loan.',
       );
     }
-    const userOrgIds = new Set(
-      await this.groups.getOrganizationIdsForUser(user.id),
-    );
+    const scope = await this.groups.getLoanScopeForUser(user.id);
     const outOfScope = loan.items.find(
-      (i) => !userOrgIds.has(i.inventoryItem.ownerOrganizationId),
+      (i) => !this.isItemInScope(scope, i.inventoryItem),
     );
     if (outOfScope) {
       throw new ForbiddenException(
-        'This loan includes items belonging to an organization you do not manage.',
+        'This loan includes items belonging to an organization/unit you do not manage.',
       );
     }
   }
 
-  private async assertItemsWithinActorOrganizations(
-    items: Pick<
-      InventoryItem,
-      'id' | 'inventoryNumber' | 'ownerOrganizationId'
-    >[],
-    userId: string,
+  /**
+   * issue(): loans.spend or loans.administer. Still a single atomic whole-loan
+   * action (no partial-issue concept), so every item must be in scope.
+   */
+  private async assertCanIssue(
+    loan: {
+      items: {
+        inventoryItem: { ownerOrganizationId: string; ownerUnitId: string };
+      }[];
+    },
+    user: AuthenticatedUser,
   ): Promise<void> {
-    const userOrgIds = new Set(
-      await this.groups.getOrganizationIdsForUser(userId),
-    );
-    const outOfScope = items.find(
-      (i) => !userOrgIds.has(i.ownerOrganizationId),
+    if (user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER)) return;
+    if (!user.permissions.includes(PERMISSIONS.LOANS_SPEND)) {
+      throw new ForbiddenException(
+        'You do not have permission to issue this loan.',
+      );
+    }
+    const scope = await this.groups.getLoanScopeForUser(user.id);
+    const outOfScope = loan.items.find(
+      (i) => !this.isItemInScope(scope, i.inventoryItem),
     );
     if (outOfScope) {
       throw new ForbiddenException(
-        `Inventory item ${outOfScope.inventoryNumber} does not belong to one of your organizations.`,
+        'This loan includes items belonging to an organization/unit you are not scoped for.',
       );
     }
+  }
+
+  /**
+   * returnLoan(): loans.spend or loans.administer. Only the items actually
+   * being returned in *this* call must be in scope - returns are already
+   * partial/multi-actor by design, unlike the atomic issue() step.
+   */
+  private async assertCanReturnItems(
+    loan: {
+      items: {
+        id: string;
+        inventoryItem: { ownerOrganizationId: string; ownerUnitId: string };
+      }[];
+    },
+    dto: ReturnLoanDto,
+    user: AuthenticatedUser,
+  ): Promise<void> {
+    if (user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER)) return;
+    if (!user.permissions.includes(PERMISSIONS.LOANS_SPEND)) {
+      throw new ForbiddenException(
+        'You do not have permission to return items on this loan.',
+      );
+    }
+    const scope = await this.groups.getLoanScopeForUser(user.id);
+    const relevantIds = new Set(dto.items.map((i) => i.loanItemId));
+    const outOfScope = loan.items.find(
+      (i) =>
+        relevantIds.has(i.id) && !this.isItemInScope(scope, i.inventoryItem),
+    );
+    if (outOfScope) {
+      throw new ForbiddenException(
+        'One or more returned items belong to an organization/unit you are not scoped for.',
+      );
+    }
+  }
+
+  /**
+   * approve(): resolves which currently-unapproved loan items the actor may
+   * approve on this call, honoring an optional explicit itemIds filter.
+   */
+  private async resolveApprovableItems(
+    loan: {
+      items: {
+        id: string;
+        approvedAt: Date | null;
+        inventoryItem: { ownerOrganizationId: string; ownerUnitId: string };
+      }[];
+    },
+    dto: ApproveLoanDto,
+    user: AuthenticatedUser,
+  ): Promise<string[]> {
+    const isAdminister = user.permissions.includes(
+      PERMISSIONS.LOANS_ADMINISTER,
+    );
+    if (!isAdminister && !user.permissions.includes(PERMISSIONS.LOANS_MANAGE)) {
+      throw new ForbiddenException(
+        'You do not have permission to approve this loan.',
+      );
+    }
+
+    const unapproved = loan.items.filter((i) => !i.approvedAt);
+
+    if (isAdminister) {
+      const items = dto.itemIds
+        ? unapproved.filter((i) => dto.itemIds!.includes(i.id))
+        : unapproved;
+      return items.map((i) => i.id);
+    }
+
+    const scope = await this.groups.getLoanScopeForUser(user.id);
+    const inScope = unapproved.filter((i) =>
+      this.isItemInScope(scope, i.inventoryItem),
+    );
+
+    if (dto.itemIds) {
+      const inScopeIds = new Set(inScope.map((i) => i.id));
+      const outOfScope = dto.itemIds.find((id) => !inScopeIds.has(id));
+      if (outOfScope) {
+        throw new ForbiddenException(
+          `Loan item ${outOfScope} does not belong to an organization/unit you manage, or is already approved.`,
+        );
+      }
+      return dto.itemIds;
+    }
+
+    if (inScope.length === 0) {
+      throw new ForbiddenException(
+        "None of this loan's (still unapproved) items belong to an organization/unit you manage.",
+      );
+    }
+    return inScope.map((i) => i.id);
   }
 
   // -------------------------------------------------------------------------
@@ -364,7 +519,7 @@ export class LoansService {
     if (tier === 'administer') {
       status = dto.forceRequested ? LoanStatus.requested : LoanStatus.approved;
     } else if (tier === 'manage') {
-      await this.assertItemsWithinActorOrganizations(resolvedItems, user.id);
+      await this.assertItemsWithinActorScope(resolvedItems, user.id);
       status = dto.forceRequested ? LoanStatus.requested : LoanStatus.approved;
     }
     // tier === 'create': always requested, any organization, forceRequested ignored.
@@ -389,7 +544,17 @@ export class LoansService {
 
       for (const item of resolvedItems) {
         await tx.loanItem.create({
-          data: { loanId: loan.id, inventoryItemId: item.id },
+          data: {
+            loanId: loan.id,
+            inventoryItemId: item.id,
+            // Fast-path approved loans (administer/manage without
+            // forceRequested) must stamp every item as approved too, or the
+            // per-item approval invariant (status===approved <=> every item
+            // approved) would be violated from the moment of creation.
+            ...(status === LoanStatus.approved
+              ? { approvedAt: new Date(), approvedByUserId: user.id }
+              : {}),
+          },
         });
       }
 
@@ -419,10 +584,15 @@ export class LoansService {
     }
 
     if (status === LoanStatus.requested) {
+      const scopedUserIds =
+        await this.groups.getUserIdsWithLoanScopeForItems(resolvedItems);
       await this.email.notifyEvent(
         'loan.requested',
         'Neue Ausleihe wartet auf Genehmigung',
         `Eine neue Ausleihe für "${dto.borrowerName ?? dto.borrowerPersonId}" mit ${resolvedItems.length} Objekt(en) wartet auf Genehmigung.`,
+        (r) =>
+          r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
+          scopedUserIds.has(r.id),
       );
     }
 
@@ -434,7 +604,7 @@ export class LoansService {
     if (loan.status === LoanStatus.completed) {
       throw new BadRequestException('Completed loans can no longer be edited.');
     }
-    await this.assertCanManageLoan(loan, user);
+    this.assertCanEditLoan(loan, user);
 
     const checkoutDate = dto.checkoutDate
       ? new Date(dto.checkoutDate)
@@ -459,12 +629,22 @@ export class LoansService {
         dueDate,
         loanId,
       );
-      if (!user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER)) {
-        await this.assertItemsWithinActorOrganizations(toAdd, user.id);
-      }
+      // No org/unit scope check on additions here (unlike create()'s
+      // manage-tier fast path): the per-item approval step re-validates
+      // scope before anything can move forward, so an unrestricted add is
+      // safe - and matches assertCanEditLoan's unconditional manage rights.
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    // Editing a not-yet-issued loan invalidates any approval progress: every
+    // item goes back to unapproved, and a loan that was already fully
+    // approved regresses to "requested". An already-issued loan is untouched
+    // (forcing re-approval after physical hand-out would break the return
+    // flow, and doesn't make practical sense).
+    const resetsApproval = loan.status !== LoanStatus.issued;
+    const regressesFromApproved =
+      resetsApproval && loan.status === LoanStatus.approved;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
       for (const li of toRemove) {
         if (loan.status === LoanStatus.issued && !li.returnedAt) {
           await tx.inventoryItem.update({
@@ -474,6 +654,7 @@ export class LoansService {
           await tx.stockMovement.create({
             data: {
               inventoryItemId: li.inventoryItemId,
+              loanItemId: li.id,
               type: StockMovementType.status_change,
               oldStatus: InventoryStatus.borrowed,
               newStatus: InventoryStatus.available,
@@ -501,6 +682,7 @@ export class LoansService {
           await tx.stockMovement.create({
             data: {
               inventoryItemId: item.id,
+              loanItemId: created.id,
               type: StockMovementType.status_change,
               oldStatus: item.status,
               newStatus: InventoryStatus.borrowed,
@@ -509,6 +691,13 @@ export class LoansService {
             },
           });
         }
+      }
+
+      if (resetsApproval) {
+        await tx.loanItem.updateMany({
+          where: { loanId },
+          data: { approvedAt: null, approvedByUserId: null },
+        });
       }
 
       await tx.loan.update({
@@ -523,6 +712,7 @@ export class LoansService {
           checkoutDate: dto.checkoutDate ? checkoutDate : undefined,
           dueDate: dto.dueDate ? dueDate : undefined,
           notes: dto.notes,
+          status: regressesFromApproved ? LoanStatus.requested : undefined,
         },
       });
 
@@ -531,7 +721,9 @@ export class LoansService {
           entityType: 'Loan',
           entityId: loanId,
           action: 'update',
-          summary: `Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" bearbeitet`,
+          summary: regressesFromApproved
+            ? `Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" bearbeitet (Status auf "beantragt" zurückgesetzt)`
+            : `Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" bearbeitet`,
           userId: user.id,
         },
         tx,
@@ -542,38 +734,94 @@ export class LoansService {
         include: LOAN_INCLUDE,
       });
     });
+
+    if (regressesFromApproved) {
+      const scopedUserIds = await this.groups.getUserIdsWithLoanScopeForItems(
+        updated.items.map((i) => i.inventoryItem),
+      );
+      await this.email.notifyEvent(
+        'loan.requested',
+        'Ausleihe wurde bearbeitet und muss erneut genehmigt werden',
+        `Die Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" wurde bearbeitet und muss erneut genehmigt werden.`,
+        (r) =>
+          r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
+          scopedUserIds.has(r.id),
+      );
+    }
+
+    return updated;
   }
 
   // -------------------------------------------------------------------------
   // Status workflow: requested -> approved -> issued -> completed
   // -------------------------------------------------------------------------
 
-  async approve(loanId: string, user: AuthenticatedUser) {
+  /**
+   * Approves specific loan items (or, without `itemIds`, every currently
+   * unapproved item the actor is authorized for). A loan only becomes
+   * "approved" once every one of its items has been approved - it may take
+   * several calls by different org/unit-scoped approvers to get there.
+   */
+  async approve(loanId: string, dto: ApproveLoanDto, user: AuthenticatedUser) {
     const loan = await this.findOne(loanId);
     if (loan.status !== LoanStatus.requested) {
       throw new BadRequestException(
         `Only requested loans can be approved (current status: ${loan.status}).`,
       );
     }
-    await this.assertCanManageLoan(loan, user);
 
-    await this.prisma.loan.update({
-      where: { id: loanId },
-      data: { status: LoanStatus.approved },
+    const itemIdsToApprove = await this.resolveApprovableItems(loan, dto, user);
+
+    let fullyApproved = false;
+    await this.prisma.$transaction(async (tx) => {
+      if (itemIdsToApprove.length) {
+        await tx.loanItem.updateMany({
+          where: { id: { in: itemIdsToApprove } },
+          data: { approvedAt: new Date(), approvedByUserId: user.id },
+        });
+      }
+
+      const stillUnapproved = await tx.loanItem.count({
+        where: { loanId, approvedAt: null },
+      });
+      fullyApproved = stillUnapproved === 0;
+
+      if (fullyApproved) {
+        await tx.loan.update({
+          where: { id: loanId },
+          data: { status: LoanStatus.approved },
+        });
+      }
+
+      await this.audit.log(
+        {
+          entityType: 'Loan',
+          entityId: loanId,
+          action: 'update',
+          summary: fullyApproved
+            ? `Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" vollständig genehmigt`
+            : `${itemIdsToApprove.length}/${loan.items.length} Objekt(e) der Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" genehmigt`,
+          userId: user.id,
+        },
+        tx,
+      );
     });
-    await this.audit.log({
-      entityType: 'Loan',
-      entityId: loanId,
-      action: 'update',
-      summary: `Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" genehmigt`,
-      userId: user.id,
-    });
-    await this.email.notifyEvent(
-      'loan.approved',
-      'Ausleihe genehmigt',
-      `Die Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" wurde genehmigt.`,
-    );
-    return this.findOne(loanId);
+
+    const updated = await this.findOne(loanId);
+    if (fullyApproved) {
+      const scopedUserIds = await this.groups.getUserIdsWithLoanScopeForItems(
+        updated.items.map((i) => i.inventoryItem),
+      );
+      await this.email.notifyEvent(
+        'loan.approved',
+        'Ausleihe genehmigt',
+        `Die Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" wurde genehmigt.`,
+        (r) =>
+          r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
+          scopedUserIds.has(r.id),
+      );
+    }
+    return updated;
   }
 
   /** The physical hand-out step ("Ausgabe-Prozess"): captures condition, flips items to borrowed. */
@@ -584,7 +832,7 @@ export class LoansService {
         `Only approved loans can be issued (current status: ${loan.status}).`,
       );
     }
-    await this.assertCanManageLoan(loan, user);
+    await this.assertCanIssue(loan, user);
 
     const overrides = new Map(
       (dto.items ?? []).map((i) => [i.loanItemId, i.checkedOutCondition]),
@@ -615,6 +863,7 @@ export class LoansService {
         await tx.stockMovement.create({
           data: {
             inventoryItemId: loanItem.inventoryItemId,
+            loanItemId: loanItem.id,
             type: StockMovementType.status_change,
             oldStatus: loanItem.inventoryItem.status,
             newStatus: InventoryStatus.borrowed,
@@ -641,10 +890,16 @@ export class LoansService {
       );
     });
 
+    const scopedUserIds = await this.groups.getUserIdsWithLoanScopeForItems(
+      loan.items.map((i) => i.inventoryItem),
+    );
     await this.email.notifyEvent(
       'loan.issued',
       'Ausleihe ausgegeben',
       `Die Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" wurde ausgegeben.`,
+      (r) =>
+        r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
+        scopedUserIds.has(r.id),
     );
 
     return this.findOne(loanId);
@@ -652,15 +907,21 @@ export class LoansService {
 
   async resetStatus(loanId: string, user: AuthenticatedUser) {
     const loan = await this.findOne(loanId);
-    await this.assertCanManageLoan(loan, user);
+    await this.assertCanResetStatus(loan, user);
     if (loan.status === LoanStatus.requested) {
       throw new BadRequestException('Loan is already in "requested" status.');
     }
 
-    await this.prisma.loan.update({
-      where: { id: loanId },
-      data: { status: LoanStatus.requested },
-    });
+    await this.prisma.$transaction([
+      this.prisma.loan.update({
+        where: { id: loanId },
+        data: { status: LoanStatus.requested },
+      }),
+      this.prisma.loanItem.updateMany({
+        where: { loanId },
+        data: { approvedAt: null, approvedByUserId: null },
+      }),
+    ]);
     await this.audit.log({
       entityType: 'Loan',
       entityId: loanId,
@@ -682,7 +943,7 @@ export class LoansService {
         `Only issued loans can be returned (current status: ${loan.status}).`,
       );
     }
-    await this.assertCanManageLoan(loan, user);
+    await this.assertCanReturnItems(loan, dto, user);
 
     const loanItemIds = new Set(loan.items.map((i) => i.id));
     for (const returnItem of dto.items) {
@@ -728,6 +989,7 @@ export class LoansService {
         await tx.stockMovement.create({
           data: {
             inventoryItemId: loanItem.inventoryItemId,
+            loanItemId: loanItem.id,
             type: StockMovementType.status_change,
             oldStatus: loanItem.inventoryItem.status,
             newStatus,
@@ -769,10 +1031,16 @@ export class LoansService {
     });
 
     if (allReturned) {
+      const scopedUserIds = await this.groups.getUserIdsWithLoanScopeForItems(
+        loan.items.map((i) => i.inventoryItem),
+      );
       await this.email.notifyEvent(
         'loan.returned',
         'Ausleihe vollständig zurückgegeben',
         `Die Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" wurde vollständig zurückgegeben.`,
+        (r) =>
+          r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
+          scopedUserIds.has(r.id),
       );
     }
 

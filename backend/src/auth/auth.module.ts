@@ -13,6 +13,6 @@ import { WebauthnService } from './webauthn/webauthn.service';
   imports: [PassportModule, JwtModule.register({}), GroupsModule, UsersModule],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, ChurchToolsService, WebauthnService],
-  exports: [AuthService],
+  exports: [AuthService, ChurchToolsService],
 })
 export class AuthModule {}

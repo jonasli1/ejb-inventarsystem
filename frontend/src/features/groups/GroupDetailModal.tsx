@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { api, getApiErrorMessage } from '@/lib/api-client';
-import { useOrganizations } from '@/lib/reference-data';
-import type { Group, GroupRoleMapping, Role } from '@/lib/api-types';
+import { useOrganizations, useOrganizationUnits } from '@/lib/reference-data';
+import type { Group, GroupOrganizationScope, GroupRoleMapping, Role } from '@/lib/api-types';
 import { Modal } from '@/components/ui/Modal';
-import { Field } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -20,6 +19,11 @@ export function GroupDetailModal({ groupId, onClose }: { groupId: string; onClos
     queryKey: ['groups', groupId],
     queryFn: async () => (await api.get<Group>(`/groups/${groupId}`)).data,
   });
+  const scopesQuery = useQuery({
+    queryKey: ['groups', groupId, 'organization-scopes'],
+    queryFn: async () =>
+      (await api.get<GroupOrganizationScope[]>(`/groups/${groupId}/organization-scopes`)).data,
+  });
   const groupRolesQuery = useQuery({
     queryKey: ['groups', groupId, 'roles'],
     queryFn: async () => (await api.get<GroupRoleMapping[]>(`/groups/${groupId}/roles`)).data,
@@ -31,25 +35,42 @@ export function GroupDetailModal({ groupId, onClose }: { groupId: string; onClos
   const { data: organizations } = useOrganizations();
 
   const [roleToAdd, setRoleToAdd] = useState('');
+  const [scopeOrgId, setScopeOrgId] = useState('');
+  const [scopeUnitId, setScopeUnitId] = useState('');
+  const { data: unitsForScopeOrg } = useOrganizationUnits(scopeOrgId || undefined);
 
-  const invalidate = () => {
+  const invalidateRoles = () => {
     void queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'roles'] });
   };
+  const invalidateScopes = () => {
+    void queryClient.invalidateQueries({ queryKey: ['groups', groupId, 'organization-scopes'] });
+  };
 
-  const updateOrganization = useMutation({
-    mutationFn: async (organizationId: string) =>
-      api.put(`/groups/${groupId}`, { organizationId: organizationId || null }),
+  const addScope = useMutation({
+    mutationFn: async () =>
+      api.post(`/groups/${groupId}/organization-scopes`, {
+        organizationId: scopeOrgId,
+        organizationUnitId: scopeUnitId || undefined,
+      }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['groups'] });
-      toast.push('Organisation der Gruppe wurde aktualisiert.');
+      invalidateScopes();
+      setScopeOrgId('');
+      setScopeUnitId('');
+      toast.push('Zuordnung wurde hinzugefügt.');
     },
+    onError: (err) => toast.push(getApiErrorMessage(err), 'error'),
+  });
+  const removeScope = useMutation({
+    mutationFn: async (scopeId: string) =>
+      api.delete(`/groups/${groupId}/organization-scopes/${scopeId}`),
+    onSuccess: invalidateScopes,
     onError: (err) => toast.push(getApiErrorMessage(err), 'error'),
   });
 
   const addRole = useMutation({
     mutationFn: async (roleId: string) => api.post(`/groups/${groupId}/roles`, { roleId }),
     onSuccess: () => {
-      invalidate();
+      invalidateRoles();
       setRoleToAdd('');
       toast.push('Mitglieder dieser Gruppe erhalten die Rolle jetzt automatisch.');
     },
@@ -57,7 +78,7 @@ export function GroupDetailModal({ groupId, onClose }: { groupId: string; onClos
   });
   const removeRole = useMutation({
     mutationFn: async (roleId: string) => api.delete(`/groups/${groupId}/roles/${roleId}`),
-    onSuccess: invalidate,
+    onSuccess: invalidateRoles,
     onError: (err) => toast.push(getApiErrorMessage(err), 'error'),
   });
 
@@ -78,24 +99,72 @@ export function GroupDetailModal({ groupId, onClose }: { groupId: string; onClos
     <Modal open onClose={onClose} title={groupQuery.data.name} size="md">
       <div className="flex flex-col gap-6">
         <div>
-          <Field label="Organisation">
+          <h3 className="mb-1 text-sm font-semibold text-ink">Organisationen &amp; Untereinheiten</h3>
+          <p className="mb-3 text-xs text-muted">
+            Mitglieder dieser Gruppe gelten für die organisations-/untereinheiten-bezogene
+            Ausleihe-Verwaltung (Berechtigungen{' '}
+            <code className="rounded bg-black/5 px-1 py-0.5">loans.manage</code> und{' '}
+            <code className="rounded bg-black/5 px-1 py-0.5">loans.spend</code>) als zugehörig zu den
+            hier zugeordneten Organisationen bzw. Untereinheiten. Eine Gruppe kann mehrere
+            Zuordnungen haben.
+          </p>
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {scopesQuery.data?.map((scope) => (
+              <Badge key={scope.id} tone="blue" className="gap-1 pr-1">
+                {scope.organization.name}
+                {scope.organizationUnit ? ` / ${scope.organizationUnit.name}` : ' (ganze Organisation)'}
+                <button
+                  onClick={() => removeScope.mutate(scope.id)}
+                  className="rounded-full hover:bg-black/10"
+                >
+                  <X size={12} />
+                </button>
+              </Badge>
+            ))}
+            {scopesQuery.data?.length === 0 && (
+              <span className="text-sm text-muted">Keine Zuordnung</span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
             <Select
-              value={groupQuery.data.organizationId ?? ''}
-              onChange={(e) => updateOrganization.mutate(e.target.value)}
+              value={scopeOrgId}
+              onChange={(e) => {
+                setScopeOrgId(e.target.value);
+                setScopeUnitId('');
+              }}
+              className="max-w-xs"
             >
-              <option value="">Keine</option>
+              <option value="">Organisation wählen …</option>
               {organizations?.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name}
                 </option>
               ))}
             </Select>
-          </Field>
-          <p className="mt-1.5 text-xs text-muted">
-            Mitglieder dieser Gruppe gelten für die organisationsbezogene Ausleihe-Verwaltung
-            (Berechtigung <code className="rounded bg-black/5 px-1 py-0.5">loans.manage</code>) als
-            Angehörige dieser Organisation.
-          </p>
+            <Select
+              value={scopeUnitId}
+              onChange={(e) => setScopeUnitId(e.target.value)}
+              className="max-w-xs"
+              disabled={!scopeOrgId}
+            >
+              <option value="">Ganze Organisation</option>
+              {unitsForScopeOrg?.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </Select>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={!scopeOrgId}
+              loading={addScope.isPending}
+              onClick={() => addScope.mutate()}
+            >
+              Hinzufügen
+            </Button>
+          </div>
         </div>
 
         <div>

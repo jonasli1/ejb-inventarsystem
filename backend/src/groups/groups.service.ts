@@ -9,6 +9,18 @@ import { AuditService } from '../audit/audit.service';
 import { NotificationPreferencesService } from '../notifications/notification-preferences.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
+import { CreateGroupOrganizationScopeDto } from './dto/create-group-organization-scope.dto';
+
+export interface LoanScopeEntry {
+  organizationId: string;
+  organizationUnitId: string | null;
+}
+
+const SCOPE_INCLUDE = {
+  organizationScopes: {
+    include: { organization: true, organizationUnit: true },
+  },
+};
 
 @Injectable()
 export class GroupsService {
@@ -25,7 +37,7 @@ export class GroupsService {
     const [data, total] = await this.prisma.$transaction([
       this.prisma.group.findMany({
         where: { deletedAt: null },
-        include: { organization: true },
+        include: SCOPE_INCLUDE,
         skip: (page - 1) * pageSize,
         take: pageSize,
         orderBy: { name: 'asc' },
@@ -39,22 +51,30 @@ export class GroupsService {
   async findOne(id: string) {
     const group = await this.prisma.group.findFirst({
       where: { id, deletedAt: null },
-      include: { organization: true },
+      include: SCOPE_INCLUDE,
     });
     if (!group) throw new NotFoundException('Group not found.');
     return group;
   }
 
-  private async assertOrganizationExists(organizationId?: string) {
-    if (!organizationId) return;
+  private async assertOrganizationAndUnitExist(
+    organizationId: string,
+    organizationUnitId?: string,
+  ) {
     const org = await this.prisma.organization.findFirst({
       where: { id: organizationId, deletedAt: null },
     });
     if (!org) throw new NotFoundException('Organization not found.');
+
+    if (organizationUnitId) {
+      const unit = await this.prisma.organizationUnit.findFirst({
+        where: { id: organizationUnitId, organizationId, deletedAt: null },
+      });
+      if (!unit) throw new NotFoundException('Organization unit not found.');
+    }
   }
 
   async create(dto: CreateGroupDto, actorId?: string) {
-    await this.assertOrganizationExists(dto.organizationId);
     const group = await this.prisma.group.create({ data: dto });
     await this.audit.log({
       entityType: 'Group',
@@ -68,7 +88,6 @@ export class GroupsService {
 
   async update(id: string, dto: UpdateGroupDto, actorId?: string) {
     const before = await this.findOne(id);
-    await this.assertOrganizationExists(dto.organizationId);
     const group = await this.prisma.group.update({ where: { id }, data: dto });
     await this.audit.log({
       entityType: 'Group',
@@ -200,24 +219,128 @@ export class GroupsService {
     }
   }
 
-  /**
-   * The set of organizations a user "belongs to" for the purpose of the
-   * org-scoped loans.manage permission: the distinct organizationId of every
-   * (non-deleted) group the user is a member of that has one set.
-   */
-  async getOrganizationIdsForUser(userId: string): Promise<string[]> {
-    const memberships = await this.prisma.userGroup.findMany({
-      where: {
-        userId,
-        group: { deletedAt: null, organizationId: { not: null } },
-      },
-      select: { group: { select: { organizationId: true } } },
+  // -----------------------------------------------------------------------
+  // Group -> Organization/Unit scope (basis for org/unit-scoped loan
+  // approval, issuing and returning)
+  // -----------------------------------------------------------------------
+
+  async listOrganizationScopes(groupId: string) {
+    await this.findOne(groupId);
+    return this.prisma.groupOrganizationScope.findMany({
+      where: { groupId },
+      include: { organization: true, organizationUnit: true },
     });
-    const ids = new Set(
-      memberships
-        .map((m) => m.group.organizationId)
-        .filter((id): id is string => id != null),
+  }
+
+  async addOrganizationScope(
+    groupId: string,
+    dto: CreateGroupOrganizationScopeDto,
+  ) {
+    await this.findOne(groupId);
+    await this.assertOrganizationAndUnitExist(
+      dto.organizationId,
+      dto.organizationUnitId,
     );
-    return [...ids];
+
+    // Not a upsert-by-compound-key: Prisma's generated compound-unique
+    // "where" input for this constraint requires organizationUnitId to be a
+    // non-null string even though the column (and the NULLS NOT DISTINCT
+    // index) is nullable - it can't express the whole-org (null) case.
+    const existing = await this.prisma.groupOrganizationScope.findFirst({
+      where: {
+        groupId,
+        organizationId: dto.organizationId,
+        organizationUnitId: dto.organizationUnitId ?? null,
+      },
+    });
+    if (existing) {
+      return this.prisma.groupOrganizationScope.findUniqueOrThrow({
+        where: { id: existing.id },
+        include: { organization: true, organizationUnit: true },
+      });
+    }
+    return this.prisma.groupOrganizationScope.create({
+      data: {
+        groupId,
+        organizationId: dto.organizationId,
+        organizationUnitId: dto.organizationUnitId,
+      },
+      include: { organization: true, organizationUnit: true },
+    });
+  }
+
+  async removeOrganizationScope(
+    groupId: string,
+    scopeId: string,
+  ): Promise<void> {
+    await this.prisma.groupOrganizationScope.deleteMany({
+      where: { id: scopeId, groupId },
+    });
+  }
+
+  /**
+   * Every (organization, unit-or-null) scope granted to a user by any
+   * (non-deleted) group they belong to. `organizationUnitId: null` means the
+   * whole organization. Basis for the org/unit-scoped loans.manage/spend
+   * permissions - see LoansService.
+   */
+  async getLoanScopeForUser(userId: string): Promise<LoanScopeEntry[]> {
+    const scopes = await this.prisma.groupOrganizationScope.findMany({
+      where: { group: { deletedAt: null, userGroups: { some: { userId } } } },
+      select: { organizationId: true, organizationUnitId: true },
+    });
+    const seen = new Set<string>();
+    const result: LoanScopeEntry[] = [];
+    for (const s of scopes) {
+      const key = `${s.organizationId}:${s.organizationUnitId ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(s);
+    }
+    return result;
+  }
+
+  /**
+   * Every user id whose group scope covers at least one of the given items'
+   * (org, unit) pairs. Intentionally a broad match (on org alone, even if the
+   * specific unit differs across a multi-item loan) - meant only for
+   * notification-eligibility fan-out, never as the hard authorization
+   * boundary (see LoansService for the strict per-item check).
+   */
+  async getUserIdsWithLoanScopeForItems(
+    items: { ownerOrganizationId: string; ownerUnitId: string }[],
+  ): Promise<Set<string>> {
+    if (items.length === 0) return new Set();
+    const organizationIds = [
+      ...new Set(items.map((i) => i.ownerOrganizationId)),
+    ];
+
+    const scopes = await this.prisma.groupOrganizationScope.findMany({
+      where: { organizationId: { in: organizationIds } },
+      select: {
+        organizationId: true,
+        organizationUnitId: true,
+        group: {
+          select: {
+            deletedAt: true,
+            userGroups: { select: { userId: true } },
+          },
+        },
+      },
+    });
+
+    const userIds = new Set<string>();
+    for (const scope of scopes) {
+      if (scope.group.deletedAt) continue;
+      const matches = items.some(
+        (i) =>
+          i.ownerOrganizationId === scope.organizationId &&
+          (scope.organizationUnitId === null ||
+            scope.organizationUnitId === i.ownerUnitId),
+      );
+      if (!matches) continue;
+      for (const ug of scope.group.userGroups) userIds.add(ug.userId);
+    }
+    return userIds;
   }
 }

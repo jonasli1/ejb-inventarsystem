@@ -33,7 +33,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-16 sm:pt-24">
       <div
         className={clsx(
-          'w-full rounded-xl border border-border bg-white shadow-xl',
+          'w-full rounded-xl border border-border bg-surface shadow-xl',
           sizeClasses[size],
         )}
         role="dialog"

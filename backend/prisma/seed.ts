@@ -21,6 +21,7 @@ const ROLE_DEFINITIONS: { name: string; description: string; permissionKeys: str
       'articles.manage',
       'loans.create',
       'loans.manage',
+      'loans.spend',
       'reports.view',
     ],
   },

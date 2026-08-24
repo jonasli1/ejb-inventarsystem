@@ -22,6 +22,7 @@ import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { GroupsService } from './groups.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
+import { CreateGroupOrganizationScopeDto } from './dto/create-group-organization-scope.dto';
 import { AssignRoleDto } from '../users/dto/assign-role.dto';
 
 @ApiTags('groups')
@@ -91,5 +92,30 @@ export class GroupsController {
     @Param('roleId', ParseUUIDPipe) roleId: string,
   ) {
     await this.groupsService.removeRole(id, roleId);
+  }
+
+  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @Get(':id/organization-scopes')
+  listOrganizationScopes(@Param('id', ParseUUIDPipe) id: string) {
+    return this.groupsService.listOrganizationScopes(id);
+  }
+
+  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @Post(':id/organization-scopes')
+  addOrganizationScope(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateGroupOrganizationScopeDto,
+  ) {
+    return this.groupsService.addOrganizationScope(id, dto);
+  }
+
+  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Delete(':id/organization-scopes/:scopeId')
+  async removeOrganizationScope(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('scopeId', ParseUUIDPipe) scopeId: string,
+  ) {
+    await this.groupsService.removeOrganizationScope(id, scopeId);
   }
 }

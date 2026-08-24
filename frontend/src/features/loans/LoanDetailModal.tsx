@@ -3,10 +3,11 @@ import { format } from 'date-fns';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, PackageCheck, Pencil, RotateCcw, Undo2 } from 'lucide-react';
 import { api, getApiErrorMessage } from '@/lib/api-client';
-import type { Loan } from '@/lib/api-types';
+import type { Attachment, Loan } from '@/lib/api-types';
 import { Modal } from '@/components/ui/Modal';
 import { InventoryStatusBadge, LoanStatusBadge } from '@/components/ui/Badge';
 import { ExportButtons } from '@/components/ui/ExportButtons';
+import { AttachmentThumbnail } from '@/components/ui/FileUploadList';
 import { downloadExport } from '@/lib/export';
 import { useAuth } from '@/auth/useAuth';
 import { isPermitted, PERMISSIONS } from '@/lib/permissions';
@@ -20,6 +21,27 @@ function formatDate(value: string | null): string {
   return value ? format(new Date(value), 'dd.MM.yyyy') : '–';
 }
 
+function ItemPhotos({ loanItemId }: { loanItemId: string }) {
+  const query = useQuery({
+    queryKey: ['attachments', 'loanItem', loanItemId],
+    queryFn: async () =>
+      (await api.get<Attachment[]>('/attachments', { params: { entityType: 'loanItem', entityId: loanItemId } }))
+        .data,
+  });
+
+  const photos = (query.data ?? []).filter(
+    (a) => a.category === 'checkoutPhoto' || a.category === 'returnPhoto',
+  );
+  if (photos.length === 0) return <span className="text-xs text-muted">–</span>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {photos.map((att) => (
+        <AttachmentThumbnail key={att.id} attachment={att} size="h-8 w-8" />
+      ))}
+    </div>
+  );
+}
+
 export function LoanDetailModal({
   loanId,
   initialLoan,
@@ -29,13 +51,11 @@ export function LoanDetailModal({
   initialLoan?: Loan;
   onClose: () => void;
 }) {
-  const { hasPermission } = useAuth();
+  const { hasPermission, me } = useAuth();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const canManageOrAdminister = isPermitted(hasPermission, [
-    PERMISSIONS.LOANS_MANAGE,
-    PERMISSIONS.LOANS_ADMINISTER,
-  ]);
+  const canApprove = isPermitted(hasPermission, [PERMISSIONS.LOANS_MANAGE, PERMISSIONS.LOANS_ADMINISTER]);
+  const canIssueOrReturn = isPermitted(hasPermission, [PERMISSIONS.LOANS_SPEND, PERMISSIONS.LOANS_ADMINISTER]);
   const [issueOpen, setIssueOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -54,10 +74,11 @@ export function LoanDetailModal({
   };
 
   const approveMutation = useMutation({
-    mutationFn: async () => api.post(`/loans/${loanId}/approve`),
-    onSuccess: () => {
+    mutationFn: async (itemIds?: string[]) =>
+      api.post(`/loans/${loanId}/approve`, itemIds ? { itemIds } : undefined),
+    onSuccess: (_, itemIds) => {
       invalidate();
-      toast.push('Ausleihe wurde genehmigt.');
+      toast.push(itemIds ? 'Objekt wurde genehmigt.' : 'Alle Objekte wurden genehmigt.');
     },
     onError: (err) => toast.push(getApiErrorMessage(err), 'error'),
   });
@@ -73,6 +94,9 @@ export function LoanDetailModal({
 
   if (!loan) return null;
 
+  const canEdit = loan.lentByUserId === me?.id || canApprove;
+  const approvedCount = loan.items.filter((i) => i.approvedAt).length;
+
   return (
     <Modal open onClose={onClose} title={loan.borrowerName ?? 'Ausleihe'} size="lg">
       <div className="flex flex-col gap-6">
@@ -86,33 +110,37 @@ export function LoanDetailModal({
               />
             )}
           </div>
-          {canManageOrAdminister && (
+          {(canApprove || canIssueOrReturn || canEdit) && (
             <div className="flex flex-wrap items-center gap-2">
-              {loan.status === 'requested' && (
-                <Button size="sm" loading={approveMutation.isPending} onClick={() => approveMutation.mutate()}>
+              {canApprove && loan.status === 'requested' && (
+                <Button
+                  size="sm"
+                  loading={approveMutation.isPending}
+                  onClick={() => approveMutation.mutate(undefined)}
+                >
                   <CheckCircle2 size={14} />
-                  Genehmigen
+                  Alle genehmigen ({approvedCount}/{loan.items.length})
                 </Button>
               )}
-              {loan.status === 'approved' && (
+              {canIssueOrReturn && loan.status === 'approved' && (
                 <Button size="sm" onClick={() => setIssueOpen(true)}>
                   <PackageCheck size={14} />
                   Ausgeben
                 </Button>
               )}
-              {loan.status === 'issued' && (
+              {canIssueOrReturn && loan.status === 'issued' && (
                 <Button size="sm" onClick={() => setReturnOpen(true)}>
                   <Undo2 size={14} />
                   Rückgabe erfassen
                 </Button>
               )}
-              {loan.status !== 'completed' && (
+              {canEdit && loan.status !== 'completed' && (
                 <Button size="sm" variant="secondary" onClick={() => setEditOpen(true)}>
                   <Pencil size={14} />
                   Bearbeiten
                 </Button>
               )}
-              {loan.status !== 'requested' && (
+              {canApprove && loan.status !== 'requested' && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -188,7 +216,12 @@ export function LoanDetailModal({
         )}
 
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-ink">Objekte ({loan.items.length})</h3>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-ink">Objekte ({loan.items.length})</h3>
+            {loan.status === 'requested' && (
+              <span className="text-xs text-muted">{approvedCount}/{loan.items.length} genehmigt</span>
+            )}
+          </div>
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-sm">
               <thead>
@@ -197,6 +230,8 @@ export function LoanDetailModal({
                   <th className="px-3 py-2">Artikel</th>
                   <th className="px-3 py-2">Zustand bei Ausgabe</th>
                   <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Genehmigt</th>
+                  <th className="px-3 py-2">Fotos</th>
                 </tr>
               </thead>
               <tbody>
@@ -217,6 +252,27 @@ export function LoanDetailModal({
                           {loan.status === 'issued' ? 'noch ausgeliehen' : 'noch nicht ausgegeben'}
                         </span>
                       )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {item.approvedAt ? (
+                        <span className="text-xs text-emerald-700" title={item.approvedBy?.displayName}>
+                          Genehmigt{item.approvedBy ? ` (${item.approvedBy.displayName})` : ''}
+                        </span>
+                      ) : canApprove && loan.status === 'requested' ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          loading={approveMutation.isPending}
+                          onClick={() => approveMutation.mutate([item.id])}
+                        >
+                          Genehmigen
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted">–</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <ItemPhotos loanItemId={item.id} />
                     </td>
                   </tr>
                 ))}

@@ -26,6 +26,7 @@ import { ExportModule } from './export/export.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { BackupModule } from './backup/backup.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { SettingsModule } from './settings/settings.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -66,6 +67,7 @@ import { AppService } from './app.service';
     AttachmentsModule,
     BackupModule,
     NotificationsModule,
+    SettingsModule,
   ],
   controllers: [AppController],
   providers: [

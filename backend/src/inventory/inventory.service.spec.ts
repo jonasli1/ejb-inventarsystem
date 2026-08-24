@@ -1,7 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { AttachmentsService } from '../attachments/attachments.service';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto';
 
 describe('InventoryService', () => {
@@ -16,11 +15,9 @@ describe('InventoryService', () => {
       findMany: jest.Mock;
       count: jest.Mock;
     };
-    loanItem: { findFirst: jest.Mock };
-    stockMovement: { create: jest.Mock };
+    stockMovement: { create: jest.Mock; findMany: jest.Mock };
     $transaction: jest.Mock;
   };
-  let attachments: { list: jest.Mock };
 
   const baseDto: CreateInventoryItemDto = {
     articleId: 'article-1',
@@ -58,18 +55,16 @@ describe('InventoryService', () => {
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
       },
-      loanItem: { findFirst: jest.fn().mockResolvedValue(null) },
-      stockMovement: { create: jest.fn().mockResolvedValue({}) },
+      stockMovement: {
+        create: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       $transaction: jest
         .fn()
         .mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
 
-    attachments = { list: jest.fn().mockResolvedValue([]) };
-    service = new InventoryService(
-      prisma as unknown as PrismaService,
-      attachments as unknown as AttachmentsService,
-    );
+    service = new InventoryService(prisma as unknown as PrismaService);
   });
 
   it('rejects conditionPercent for a non-CONSUMABLE article', async () => {
@@ -165,44 +160,26 @@ describe('InventoryService', () => {
     });
   });
 
-  describe('getLastLoanPhotos', () => {
+  describe('getMovements', () => {
     it('throws NotFoundException for an unknown item', async () => {
       prisma.inventoryItem.findFirst.mockResolvedValue(null);
-      await expect(service.getLastLoanPhotos('missing')).rejects.toThrow(
+      await expect(service.getMovements('missing')).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('returns an empty result when the item was never loaned', async () => {
+    it('includes the related loan item (for the "zur Ausleihe" link/photos)', async () => {
       prisma.inventoryItem.findFirst.mockResolvedValue({ id: 'item-1' });
-      prisma.loanItem.findFirst.mockResolvedValue(null);
 
-      const result = await service.getLastLoanPhotos('item-1');
+      await service.getMovements('item-1');
 
-      expect(result).toEqual({ loanId: null, attachments: [] });
-      expect(attachments.list).not.toHaveBeenCalled();
-    });
-
-    it('returns the checkout/return photos of the most recent loan item', async () => {
-      prisma.inventoryItem.findFirst.mockResolvedValue({ id: 'item-1' });
-      prisma.loanItem.findFirst.mockResolvedValue({
-        id: 'loan-item-1',
-        loanId: 'loan-1',
-      });
-      attachments.list.mockResolvedValue([
-        { id: 'att-1', category: 'checkoutPhoto' },
-      ]);
-
-      const result = await service.getLastLoanPhotos('item-1');
-
-      expect(prisma.loanItem.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { inventoryItemId: 'item-1' } }),
+      expect(prisma.stockMovement.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            loanItem: { select: { id: true, loanId: true } },
+          }),
+        }),
       );
-      expect(attachments.list).toHaveBeenCalledWith('loanItem', 'loan-item-1');
-      expect(result).toEqual({
-        loanId: 'loan-1',
-        attachments: [{ id: 'att-1', category: 'checkoutPhoto' }],
-      });
     });
   });
 });

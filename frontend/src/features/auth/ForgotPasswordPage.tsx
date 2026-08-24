@@ -89,7 +89,7 @@ export function ForgotPasswordPage() {
               </Field>
 
               {serverError && (
-                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{serverError}</p>
+                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{serverError}</p>
               )}
 
               <Button type="submit" loading={isSubmitting} className="w-full">

@@ -78,8 +78,10 @@ export function LoanEditModal({
         }}
         className="flex flex-col gap-4"
       >
-        <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
-          Änderungen an Adresse, Kontakt oder Objekten erfordern keine erneute Genehmigung.
+        <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+          {loan.status === 'issued'
+            ? 'Diese Ausleihe wurde bereits ausgegeben; Änderungen setzen den Status nicht zurück.'
+            : 'Änderungen setzen den Genehmigungsstatus dieser Ausleihe zurück auf "beantragt" – sie muss danach erneut genehmigt werden.'}
         </p>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -89,23 +91,28 @@ export function LoanEditModal({
           <Field label="Geplantes Ausgabedatum">
             <Input type="date" value={checkoutDate} onChange={(e) => setCheckoutDate(e.target.value)} required />
           </Field>
-          <Field label="Rückgabe fällig am (optional)">
-            <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <Field label="Rückgabe fällig am">
+            <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
           </Field>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Straße, Hausnummer (optional)">
-            <Input value={borrowerStreet} onChange={(e) => setBorrowerStreet(e.target.value)} />
+          <Field label="Straße, Hausnummer">
+            <Input value={borrowerStreet} onChange={(e) => setBorrowerStreet(e.target.value)} required />
           </Field>
-          <Field label="PLZ, Ort (optional)">
-            <Input value={borrowerCity} onChange={(e) => setBorrowerCity(e.target.value)} />
+          <Field label="PLZ, Ort">
+            <Input value={borrowerCity} onChange={(e) => setBorrowerCity(e.target.value)} required />
           </Field>
-          <Field label="E-Mail (optional)">
-            <Input type="email" value={borrowerEmail} onChange={(e) => setBorrowerEmail(e.target.value)} />
+          <Field label="E-Mail">
+            <Input
+              type="email"
+              value={borrowerEmail}
+              onChange={(e) => setBorrowerEmail(e.target.value)}
+              required
+            />
           </Field>
-          <Field label="Handynummer (optional)">
-            <Input value={borrowerPhone} onChange={(e) => setBorrowerPhone(e.target.value)} />
+          <Field label="Handynummer">
+            <Input value={borrowerPhone} onChange={(e) => setBorrowerPhone(e.target.value)} required />
           </Field>
         </div>
 
@@ -147,14 +154,14 @@ export function LoanEditModal({
 
         <Field label="Notizen (optional)">
           <textarea
-            className="w-full rounded-lg border border-border bg-white p-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+            className="w-full rounded-lg border border-border bg-surface p-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
             rows={2}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
         </Field>
 
-        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>}
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>

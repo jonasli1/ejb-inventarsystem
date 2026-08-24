@@ -26,6 +26,24 @@ export class ArticlesService {
       deletedAt: null,
       ...(query.type ? { type: query.type } : {}),
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { name: { contains: query.search, mode: 'insensitive' } },
+              {
+                manufacturer: { contains: query.search, mode: 'insensitive' },
+              },
+              {
+                description: { contains: query.search, mode: 'insensitive' },
+              },
+              {
+                category: {
+                  name: { contains: query.search, mode: 'insensitive' },
+                },
+              },
+            ],
+          }
+        : {}),
     };
 
     const [data, total] = await this.prisma.$transaction([

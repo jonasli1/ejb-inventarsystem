@@ -8,6 +8,7 @@ import type { Attachment, AttachmentCategory, AttachmentEntityType } from '@/lib
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/toast';
+import { useLightbox } from '@/components/ui/ImageLightbox';
 
 function humanFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -15,10 +16,24 @@ function humanFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Small inline preview for image attachments; other categories fall back to a file icon. */
-export function AttachmentThumbnail({ attachment }: { attachment: Attachment }) {
+/**
+ * Small inline preview for image attachments; other categories fall back to a
+ * file icon. Images are shown small by default; click to view full-size in
+ * the shared lightbox (set enlargeable={false} to opt out, e.g. inside
+ * another already-clickable row).
+ */
+export function AttachmentThumbnail({
+  attachment,
+  enlargeable = true,
+  size = 'h-10 w-10',
+}: {
+  attachment: Attachment;
+  enlargeable?: boolean;
+  size?: string;
+}) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const isImage = attachment.mimeType.startsWith('image/');
+  const lightbox = useLightbox();
 
   useEffect(() => {
     if (!isImage) return;
@@ -39,9 +54,21 @@ export function AttachmentThumbnail({ attachment }: { attachment: Attachment }) 
     return <FileText size={16} className="shrink-0 text-muted" />;
   }
   return (
-    <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-border bg-canvas">
+    <div className={`${size} shrink-0 overflow-hidden rounded-md border border-border bg-canvas`}>
       {objectUrl ? (
-        <img src={objectUrl} alt={attachment.fileName} className="h-full w-full object-cover" />
+        <img
+          src={objectUrl}
+          alt={attachment.fileName}
+          className={`h-full w-full object-cover ${enlargeable ? 'cursor-pointer' : ''}`}
+          onClick={
+            enlargeable
+              ? (e) => {
+                  e.stopPropagation();
+                  lightbox.open(objectUrl, attachment.fileName);
+                }
+              : undefined
+          }
+        />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
           <Spinner />

@@ -8,6 +8,7 @@ import { Fingerprint, Package } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { getApiErrorMessage } from '@/lib/api-client';
 import { api } from '@/lib/api-client';
+import { usePublicAppSettings } from '@/lib/app-settings';
 import { Button } from '@/components/ui/Button';
 import { Field, Input } from '@/components/ui/Input';
 import { isWebAuthnSupported, loginWithPasskey } from './passkey';
@@ -36,6 +37,8 @@ export function LoginPage() {
     queryFn: async () =>
       (await api.get<{ available: boolean }>('/auth/password-reset-available')).data,
   });
+  const appSettingsQuery = usePublicAppSettings();
+  const appSettings = appSettingsQuery.data;
 
   const onSubmit = async (values: FormValues) => {
     setServerError(null);
@@ -77,11 +80,17 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 text-white">
-            <Package size={22} />
+          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-brand-600 text-white">
+            {appSettings?.logoDataUrl ? (
+              <img src={appSettings.logoDataUrl} alt="" className="h-full w-full object-contain" />
+            ) : (
+              <Package size={22} />
+            )}
           </div>
           <div className="text-center">
-            <h1 className="text-lg font-semibold text-ink">Inventarsystem</h1>
+            <h1 className="text-lg font-semibold text-ink">
+              {appSettings?.displayName ?? 'Inventarsystem'}
+            </h1>
             <p className="text-sm text-muted">Melde dich an, um fortzufahren</p>
           </div>
         </div>
@@ -105,7 +114,7 @@ export function LoginPage() {
             )}
 
             {serverError && (
-              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{serverError}</p>
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{serverError}</p>
             )}
 
             <Button type="submit" loading={isSubmitting} className="w-full">
@@ -113,35 +122,42 @@ export function LoginPage() {
             </Button>
           </form>
 
-          <div className="my-5 flex items-center gap-3">
-            <div className="h-px flex-1 bg-border" />
-            <span className="text-xs text-muted">oder</span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
+          {(appSettings?.churchToolsAvailable ||
+            (appSettings?.passkeyAvailable && isWebAuthnSupported())) && (
+            <>
+              <div className="my-5 flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs text-muted">oder</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
 
-          <div className="flex flex-col gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full"
-              loading={churchToolsLoading}
-              onClick={() => void onChurchTools()}
-            >
-              Mit ChurchTools anmelden
-            </Button>
-            {isWebAuthnSupported() && (
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full"
-                loading={passkeyLoading}
-                onClick={() => void onPasskey()}
-              >
-                <Fingerprint size={16} />
-                Mit Passkey anmelden
-              </Button>
-            )}
-          </div>
+              <div className="flex flex-col gap-2">
+                {appSettings?.churchToolsAvailable && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full"
+                    loading={churchToolsLoading}
+                    onClick={() => void onChurchTools()}
+                  >
+                    Mit ChurchTools anmelden
+                  </Button>
+                )}
+                {appSettings?.passkeyAvailable && isWebAuthnSupported() && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full"
+                    loading={passkeyLoading}
+                    onClick={() => void onPasskey()}
+                  >
+                    <Fingerprint size={16} />
+                    Mit Passkey anmelden
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

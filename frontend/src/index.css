@@ -1,5 +1,10 @@
 @import 'tailwindcss';
 
+/* Class-based (not media-query-based): theme.ts resolves "system" via JS
+   (matchMedia) and toggles this class directly, so dark: only needs to key
+   off .dark - no separate prefers-color-scheme handling here. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans:
     'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -17,9 +22,31 @@
   --color-brand-700: #333da3;
 }
 
+/* Dark-mode token overrides. Since nearly every component already uses
+   these semantic tokens (bg-canvas, text-ink, border-border, ...) instead of
+   raw colors, redefining the custom properties here is enough to re-theme
+   almost the whole app without touching individual components. */
+.dark {
+  --color-canvas: #0f0f13;
+  --color-surface: #18181d;
+  --color-border: #2b2b33;
+  --color-ink: #f2f2f5;
+  --color-muted: #9d9da8;
+
+  --color-brand-50: #1c2050;
+  --color-brand-100: #262b6e;
+  --color-brand-500: #6c78e8;
+  --color-brand-600: #7d89ee;
+  --color-brand-700: #a3acf3;
+}
+
 @layer base {
   html {
     color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
   }
 
   body {

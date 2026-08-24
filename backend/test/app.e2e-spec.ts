@@ -15,6 +15,16 @@ import { ALL_PERMISSIONS } from '../src/common/constants/permissions';
 // wire transport so those don't attempt a real SMTP connection.
 jest.mock('nodemailer');
 
+// CreateLoanDto requires these (no longer optional) - spread into every
+// loan-creation body in this file that doesn't set them explicitly.
+const LOAN_BORROWER_FIELDS = {
+  borrowerStreet: 'Teststraße 1',
+  borrowerCity: '12345 Teststadt',
+  borrowerEmail: 'borrower@example.com',
+  borrowerPhone: '+49 170 0000000',
+  dueDate: '2030-12-31T00:00:00.000Z',
+};
+
 describe('Inventarsystem API (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
@@ -409,6 +419,7 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({
           borrowerName: 'E2E Borrower',
+          ...LOAN_BORROWER_FIELDS,
           checkoutDate,
           items: [{ articleId: article.body.id, quantity: 2 }],
         })
@@ -526,6 +537,7 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({
           borrowerName: 'Greedy Borrower',
+          ...LOAN_BORROWER_FIELDS,
           items: [{ articleId: article.body.id, quantity: 5 }],
         })
         .expect(400);
@@ -922,6 +934,7 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           borrowerName: 'Read Only Test',
+          ...LOAN_BORROWER_FIELDS,
           items: [{ articleId: article.body.id, quantity: 1 }],
         })
         .expect(201);
@@ -1478,6 +1491,7 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({
           borrowerName: 'Export Borrower',
+          ...LOAN_BORROWER_FIELDS,
           items: [{ inventoryItemId }],
         })
         .expect(201);
@@ -1627,7 +1641,7 @@ describe('Inventarsystem API (e2e)', () => {
     });
   });
 
-  describe('group -> organization assignment and org-scoped loan approval workflow', () => {
+  describe('group -> organization/unit scope and org-scoped loan approval workflow', () => {
     let adminToken: string;
     let orgA: { id: string };
     let orgB: { id: string };
@@ -1636,7 +1650,15 @@ describe('Inventarsystem API (e2e)', () => {
     let requesterToken: string;
     let managerAToken: string;
     let managerBToken: string;
+    let spenderAToken: string;
     let administerToken: string;
+    const borrowerFields = {
+      borrowerStreet: 'Teststraße 1',
+      borrowerCity: '12345 Teststadt',
+      borrowerEmail: 'borrower@example.com',
+      borrowerPhone: '+49 170 0000000',
+      dueDate: '2030-12-31T00:00:00.000Z',
+    };
 
     beforeAll(async () => {
       const login = await request(app.getHttpServer())
@@ -1701,23 +1723,52 @@ describe('Inventarsystem API (e2e)', () => {
           .expect(201)
       ).body;
 
-      // Groups tied to an organization -- membership implies "belongs to" that
-      // organization for the purpose of the org-scoped loans.manage permission.
+      // Groups are scoped to an organization (or a specific unit within it)
+      // via the dedicated organization-scopes sub-resource -- membership then
+      // implies "belongs to" that org/unit for the org-scoped loans.manage
+      // and loans.spend permissions.
       const groupA = (
         await request(app.getHttpServer())
           .post('/api/v1/groups')
           .set('Authorization', `Bearer ${adminToken}`)
-          .send({ name: 'Group of Org A', organizationId: orgA.id })
+          .send({ name: 'Group of Org A' })
           .expect(201)
       ).body;
-      expect(groupA.organizationId).toBe(orgA.id);
+      const groupAScope = (
+        await request(app.getHttpServer())
+          .post(`/api/v1/groups/${groupA.id}/organization-scopes`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ organizationId: orgA.id })
+          .expect(201)
+      ).body;
+      expect(groupAScope.organizationId).toBe(orgA.id);
+      expect(groupAScope.organizationUnitId).toBeNull();
+
       const groupB = (
         await request(app.getHttpServer())
           .post('/api/v1/groups')
           .set('Authorization', `Bearer ${adminToken}`)
-          .send({ name: 'Group of Org B', organizationId: orgB.id })
+          .send({ name: 'Group of Org B' })
           .expect(201)
       ).body;
+      await request(app.getHttpServer())
+        .post(`/api/v1/groups/${groupB.id}/organization-scopes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ organizationId: orgB.id })
+        .expect(201);
+
+      const spenderGroupA = (
+        await request(app.getHttpServer())
+          .post('/api/v1/groups')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name: 'Spenders of Org A' })
+          .expect(201)
+      ).body;
+      await request(app.getHttpServer())
+        .post(`/api/v1/groups/${spenderGroupA.id}/organization-scopes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ organizationId: orgA.id })
+        .expect(201);
 
       const createRole = (
         await request(app.getHttpServer())
@@ -1731,6 +1782,13 @@ describe('Inventarsystem API (e2e)', () => {
           .post('/api/v1/roles')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({ name: 'Workflow Manager' })
+          .expect(201)
+      ).body;
+      const spendRole = (
+        await request(app.getHttpServer())
+          .post('/api/v1/roles')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name: 'Workflow Spender' })
           .expect(201)
       ).body;
       const administerRole = (
@@ -1747,12 +1805,15 @@ describe('Inventarsystem API (e2e)', () => {
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200)
       ).body;
-      const permByKey = (key: string) =>
-        permissions.find((p: { key: string }) => p.key === key);
+      const permByKey = (key: string): { id: string } =>
+        permissions.find((p: { key: string }) => p.key === key) as {
+          id: string;
+        };
 
       for (const [roleId, key] of [
         [createRole.id, 'loans.create'],
         [manageRole.id, 'loans.manage'],
+        [spendRole.id, 'loans.spend'],
         [administerRole.id, 'loans.administer'],
       ] as const) {
         await request(app.getHttpServer())
@@ -1790,7 +1851,7 @@ describe('Inventarsystem API (e2e)', () => {
           .post('/api/v1/auth/login')
           .send({ email, password: 'WorkflowPass123!' })
           .expect(201);
-        return login.body.accessToken;
+        return login.body.accessToken as string;
       }
 
       requesterToken = await createUserWithRoleAndGroup(
@@ -1806,6 +1867,11 @@ describe('Inventarsystem API (e2e)', () => {
         'manager-b@example.com',
         manageRole.id,
         groupB.id,
+      );
+      spenderAToken = await createUserWithRoleAndGroup(
+        'spender-a@example.com',
+        spendRole.id,
+        spenderGroupA.id,
       );
       administerToken = await createUserWithRoleAndGroup(
         'administer@example.com',
@@ -1826,6 +1892,7 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${requesterToken}`)
         .send({
           borrowerName: 'Installed Test',
+          ...borrowerFields,
           items: [{ inventoryItemId: itemA.id }],
         })
         .expect(400);
@@ -1838,37 +1905,48 @@ describe('Inventarsystem API (e2e)', () => {
         .expect(200);
     });
 
-    it('walks a loan through requested -> approved -> issued -> completed, org-scoped at every management step', async () => {
+    it('walks a loan through requested -> approved -> issued -> completed: manage approves (org-scoped), spend issues/returns (separately gated)', async () => {
       // loans.create always requests, regardless of organization.
       const created = await request(app.getHttpServer())
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${requesterToken}`)
         .send({
           borrowerName: 'Workflow Borrower',
-          borrowerStreet: 'Teststraße 1',
-          borrowerCity: '12345 Teststadt',
-          borrowerEmail: 'borrower@example.com',
-          borrowerPhone: '+49 170 0000000',
+          ...borrowerFields,
           items: [{ inventoryItemId: itemA.id }],
         })
         .expect(201);
       expect(created.body.status).toBe('requested');
+      expect(created.body.items[0].approvedAt).toBeNull();
       const loanId = created.body.id;
 
-      // A loans.manage holder from a *different* organization cannot approve.
+      // A loans.manage holder from a *different* organization has nothing in
+      // scope to approve.
       await request(app.getHttpServer())
         .post(`/api/v1/loans/${loanId}/approve`)
         .set('Authorization', `Bearer ${managerBToken}`)
+        .send({})
         .expect(403);
 
-      // The loans.manage holder from the *matching* organization can.
+      // The loans.manage holder from the *matching* organization can, and
+      // this single-item loan becomes fully approved in one call.
       const approved = await request(app.getHttpServer())
         .post(`/api/v1/loans/${loanId}/approve`)
         .set('Authorization', `Bearer ${managerAToken}`)
+        .send({})
         .expect(201);
       expect(approved.body.status).toBe('approved');
+      expect(approved.body.items[0].approvedAt).not.toBeNull();
+      expect(approved.body.items[0].approvedBy.id).toBeDefined();
 
-      // Issuing (the "Ausgabe-Prozess") is likewise org-scoped.
+      // loans.manage alone no longer covers issuing -- that's loans.spend now.
+      await request(app.getHttpServer())
+        .post(`/api/v1/loans/${loanId}/issue`)
+        .set('Authorization', `Bearer ${managerAToken}`)
+        .send({})
+        .expect(403);
+
+      // A loans.spend holder from a different org's scope can't either.
       await request(app.getHttpServer())
         .post(`/api/v1/loans/${loanId}/issue`)
         .set('Authorization', `Bearer ${managerBToken}`)
@@ -1877,7 +1955,7 @@ describe('Inventarsystem API (e2e)', () => {
 
       const issued = await request(app.getHttpServer())
         .post(`/api/v1/loans/${loanId}/issue`)
-        .set('Authorization', `Bearer ${managerAToken}`)
+        .set('Authorization', `Bearer ${spenderAToken}`)
         .send({})
         .expect(201);
       expect(issued.body.status).toBe('issued');
@@ -1888,7 +1966,8 @@ describe('Inventarsystem API (e2e)', () => {
         .expect(200);
       expect(itemAfterIssue.body.status).toBe('borrowed');
 
-      const returned = await request(app.getHttpServer())
+      // Returning is likewise loans.spend, not loans.manage.
+      await request(app.getHttpServer())
         .post(`/api/v1/loans/${loanId}/return`)
         .set('Authorization', `Bearer ${managerAToken}`)
         .send({
@@ -1896,8 +1975,119 @@ describe('Inventarsystem API (e2e)', () => {
             loanItemId: li.id,
           })),
         })
+        .expect(403);
+
+      const returned = await request(app.getHttpServer())
+        .post(`/api/v1/loans/${loanId}/return`)
+        .set('Authorization', `Bearer ${spenderAToken}`)
+        .send({
+          items: issued.body.items.map((li: { id: string }) => ({
+            loanItemId: li.id,
+          })),
+        })
         .expect(201);
       expect(returned.body.status).toBe('completed');
+    });
+
+    it('approves a multi-organization loan per item, only becoming "approved" once every item is', async () => {
+      const article = (
+        await request(app.getHttpServer())
+          .post('/api/v1/articles')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name: 'Partial Approval Article', type: 'UNIQUE' })
+          .expect(201)
+      ).body;
+      const location = (
+        await request(app.getHttpServer())
+          .post('/api/v1/locations')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name: 'Partial Approval Location' })
+          .expect(201)
+      ).body;
+      const room = (
+        await request(app.getHttpServer())
+          .post('/api/v1/rooms')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name: 'Partial Approval Room', locationId: location.id })
+          .expect(201)
+      ).body;
+      const unitB = (
+        await request(app.getHttpServer())
+          .post(`/api/v1/organizations/${orgB.id}/units`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name: 'Partial Approval Unit B' })
+          .expect(201)
+      ).body;
+      const itemFromA = (
+        await request(app.getHttpServer())
+          .post('/api/v1/inventory')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            articleId: article.id,
+            locationId: location.id,
+            roomId: room.id,
+            ownerOrganizationId: orgA.id,
+            ownerUnitId: unitA.id,
+          })
+          .expect(201)
+      ).body;
+      const itemFromB = (
+        await request(app.getHttpServer())
+          .post('/api/v1/inventory')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            articleId: article.id,
+            locationId: location.id,
+            roomId: room.id,
+            ownerOrganizationId: orgB.id,
+            ownerUnitId: unitB.id,
+          })
+          .expect(201)
+      ).body;
+
+      const created = await request(app.getHttpServer())
+        .post('/api/v1/loans')
+        .set('Authorization', `Bearer ${requesterToken}`)
+        .send({
+          borrowerName: 'Multi-Org Borrower',
+          ...borrowerFields,
+          items: [
+            { inventoryItemId: itemFromA.id },
+            { inventoryItemId: itemFromB.id },
+          ],
+        })
+        .expect(201);
+      const loanId = created.body.id;
+
+      // Org A's manager approves only their own item; the loan stays
+      // "requested" because Org B's item is still unapproved.
+      const afterFirstApprove = await request(app.getHttpServer())
+        .post(`/api/v1/loans/${loanId}/approve`)
+        .set('Authorization', `Bearer ${managerAToken}`)
+        .send({})
+        .expect(201);
+      expect(afterFirstApprove.body.status).toBe('requested');
+      const itemAApproval = afterFirstApprove.body.items.find(
+        (i: { inventoryItemId: string }) => i.inventoryItemId === itemFromA.id,
+      );
+      const itemBApproval = afterFirstApprove.body.items.find(
+        (i: { inventoryItemId: string }) => i.inventoryItemId === itemFromB.id,
+      );
+      expect(itemAApproval.approvedAt).not.toBeNull();
+      expect(itemBApproval.approvedAt).toBeNull();
+
+      // Org B's manager approves the remaining item -> now fully approved.
+      const afterSecondApprove = await request(app.getHttpServer())
+        .post(`/api/v1/loans/${loanId}/approve`)
+        .set('Authorization', `Bearer ${managerBToken}`)
+        .send({})
+        .expect(201);
+      expect(afterSecondApprove.body.status).toBe('approved');
+      expect(
+        afterSecondApprove.body.items.every(
+          (i: { approvedAt: string | null }) => i.approvedAt !== null,
+        ),
+      ).toBe(true);
     });
 
     it('lets loans.administer create a pre-approved loan for any organization, with forceRequested honored', async () => {
@@ -1931,7 +2121,7 @@ describe('Inventarsystem API (e2e)', () => {
           .send({ name: 'Administer Test Unit' })
           .expect(201)
       ).body;
-      async function makeItem() {
+      async function makeItem(): Promise<{ id: string }> {
         return (
           await request(app.getHttpServer())
             .post('/api/v1/inventory')
@@ -1944,7 +2134,7 @@ describe('Inventarsystem API (e2e)', () => {
               ownerUnitId: unitB.id,
             })
             .expect(201)
-        ).body;
+        ).body as { id: string };
       }
       const itemOne = await makeItem();
       const itemTwo = await makeItem();
@@ -1955,12 +2145,14 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${administerToken}`)
         .send({
           borrowerName: 'Administer Direct',
+          ...borrowerFields,
           items: [{ inventoryItemId: itemOne.id }],
         })
         .expect(201);
       expect(preApproved.body.status).toBe('approved');
 
-      // reset-status forces it back to "requested" for re-review.
+      // reset-status forces it back to "requested" for re-review, and clears
+      // the item-level approval that was fast-path-stamped at creation.
       await request(app.getHttpServer())
         .post(`/api/v1/loans/${preApproved.body.id}/reset-status`)
         .set('Authorization', `Bearer ${administerToken}`)
@@ -1970,6 +2162,7 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
       expect(afterReset.body.status).toBe('requested');
+      expect(afterReset.body.items[0].approvedAt).toBeNull();
 
       // forceRequested: create as "requested" up front instead of auto-approving.
       const forcedRequested = await request(app.getHttpServer())
@@ -1977,6 +2170,7 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${administerToken}`)
         .send({
           borrowerName: 'Administer Forced Requested',
+          ...borrowerFields,
           forceRequested: true,
           items: [{ inventoryItemId: itemTwo.id }],
         })
@@ -1984,15 +2178,185 @@ describe('Inventarsystem API (e2e)', () => {
       expect(forcedRequested.body.status).toBe('requested');
     });
 
-    it('rejects a loans.manage holder creating a loan with items outside their organization', async () => {
+    it('rejects a loans.manage holder creating a loan with items outside their organization/unit scope', async () => {
       await request(app.getHttpServer())
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${managerBToken}`)
         .send({
           borrowerName: 'Cross-Org Attempt',
+          ...borrowerFields,
           items: [{ inventoryItemId: itemA.id }],
         })
         .expect(403);
+    });
+
+    it("lets the loan's creator edit it with only loans.create, and lets loans.manage edit any loan unconditionally", async () => {
+      // Own item (not the shared itemA) so this test's lingering "requested"
+      // loan doesn't block itemA's date range for later tests in this block.
+      const editArticle = (
+        await request(app.getHttpServer())
+          .post('/api/v1/articles')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name: 'Editable Loan Article', type: 'UNIQUE' })
+          .expect(201)
+      ).body;
+      const editLocation = (
+        await request(app.getHttpServer())
+          .post('/api/v1/locations')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name: 'Editable Loan Location' })
+          .expect(201)
+      ).body;
+      const editRoom = (
+        await request(app.getHttpServer())
+          .post('/api/v1/rooms')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name: 'Editable Loan Room', locationId: editLocation.id })
+          .expect(201)
+      ).body;
+      const editItem = (
+        await request(app.getHttpServer())
+          .post('/api/v1/inventory')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            articleId: editArticle.id,
+            locationId: editLocation.id,
+            roomId: editRoom.id,
+            ownerOrganizationId: orgA.id,
+            ownerUnitId: unitA.id,
+          })
+          .expect(201)
+      ).body;
+
+      const created = await request(app.getHttpServer())
+        .post('/api/v1/loans')
+        .set('Authorization', `Bearer ${requesterToken}`)
+        .send({
+          borrowerName: 'Editable Loan',
+          ...borrowerFields,
+          items: [{ inventoryItemId: editItem.id }],
+        })
+        .expect(201);
+      const loanId = created.body.id;
+
+      // Creator (bare loans.create) may edit their own loan.
+      await request(app.getHttpServer())
+        .put(`/api/v1/loans/${loanId}`)
+        .set('Authorization', `Bearer ${requesterToken}`)
+        .send({ notes: 'Von Ersteller bearbeitet' })
+        .expect(200);
+
+      // A *different* bare loans.create holder may not.
+      const otherRequester = (
+        await request(app.getHttpServer())
+          .post('/api/v1/users')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            email: 'other-requester@example.com',
+            displayName: 'Other Requester',
+            password: 'WorkflowPass123!',
+          })
+          .expect(201)
+      ).body;
+      const roles = (
+        await request(app.getHttpServer())
+          .get('/api/v1/roles')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .expect(200)
+      ).body;
+      const requesterRole = roles.find(
+        (r: { name: string }) => r.name === 'Workflow Requester',
+      );
+      await request(app.getHttpServer())
+        .post(`/api/v1/users/${otherRequester.id}/roles`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ roleId: requesterRole.id })
+        .expect(201);
+      const otherRequesterLogin = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({
+          email: 'other-requester@example.com',
+          password: 'WorkflowPass123!',
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put(`/api/v1/loans/${loanId}`)
+        .set('Authorization', `Bearer ${otherRequesterLogin.body.accessToken}`)
+        .send({ notes: 'Sollte fehlschlagen' })
+        .expect(403);
+
+      // loans.manage may edit it too, even though managerB is scoped to a
+      // different organization than the loan's item.
+      await request(app.getHttpServer())
+        .put(`/api/v1/loans/${loanId}`)
+        .set('Authorization', `Bearer ${managerBToken}`)
+        .send({ notes: 'Von Manager (andere Organisation) bearbeitet' })
+        .expect(200);
+    });
+
+    it('resets an approved loan back to "requested" (and clears item approval) when edited', async () => {
+      // Own item (not the shared itemA) so this test's lingering "requested"
+      // loan doesn't block itemA's date range for later tests in this block.
+      const resetArticle = (
+        await request(app.getHttpServer())
+          .post('/api/v1/articles')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name: 'Reset On Edit Article', type: 'UNIQUE' })
+          .expect(201)
+      ).body;
+      const resetLocation = (
+        await request(app.getHttpServer())
+          .post('/api/v1/locations')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name: 'Reset On Edit Location' })
+          .expect(201)
+      ).body;
+      const resetRoom = (
+        await request(app.getHttpServer())
+          .post('/api/v1/rooms')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name: 'Reset On Edit Room', locationId: resetLocation.id })
+          .expect(201)
+      ).body;
+      const resetItem = (
+        await request(app.getHttpServer())
+          .post('/api/v1/inventory')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            articleId: resetArticle.id,
+            locationId: resetLocation.id,
+            roomId: resetRoom.id,
+            ownerOrganizationId: orgA.id,
+            ownerUnitId: unitA.id,
+          })
+          .expect(201)
+      ).body;
+
+      const created = await request(app.getHttpServer())
+        .post('/api/v1/loans')
+        .set('Authorization', `Bearer ${requesterToken}`)
+        .send({
+          borrowerName: 'Reset On Edit',
+          ...borrowerFields,
+          items: [{ inventoryItemId: resetItem.id }],
+        })
+        .expect(201);
+      const loanId = created.body.id;
+
+      const approved = await request(app.getHttpServer())
+        .post(`/api/v1/loans/${loanId}/approve`)
+        .set('Authorization', `Bearer ${managerAToken}`)
+        .send({})
+        .expect(201);
+      expect(approved.body.status).toBe('approved');
+
+      const edited = await request(app.getHttpServer())
+        .put(`/api/v1/loans/${loanId}`)
+        .set('Authorization', `Bearer ${managerAToken}`)
+        .send({ notes: 'Nachträglich geändert' })
+        .expect(200);
+      expect(edited.body.status).toBe('requested');
+      expect(edited.body.items[0].approvedAt).toBeNull();
     });
 
     it('prevents double-booking the same item for overlapping future date ranges', async () => {
@@ -2001,6 +2365,7 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${administerToken}`)
         .send({
           borrowerName: 'Future Borrower 1',
+          ...borrowerFields,
           checkoutDate: '2030-01-10T00:00:00.000Z',
           dueDate: '2030-01-20T00:00:00.000Z',
           items: [{ inventoryItemId: itemA.id }],
@@ -2014,6 +2379,7 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${administerToken}`)
         .send({
           borrowerName: 'Future Borrower 2 (conflict)',
+          ...borrowerFields,
           checkoutDate: '2030-01-15T00:00:00.000Z',
           dueDate: '2030-01-25T00:00:00.000Z',
           items: [{ inventoryItemId: itemA.id }],
@@ -2026,12 +2392,76 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${administerToken}`)
         .send({
           borrowerName: 'Future Borrower 3 (no conflict)',
+          ...borrowerFields,
           checkoutDate: '2030-01-21T00:00:00.000Z',
           dueDate: '2030-01-25T00:00:00.000Z',
           items: [{ inventoryItemId: itemA.id }],
         })
         .expect(201);
       expect(nonConflicting.body.status).toBe('approved');
+    });
+
+    it('validates, lists and removes organization-scopes on a group', async () => {
+      const scopeGroup = (
+        await request(app.getHttpServer())
+          .post('/api/v1/groups')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name: 'Scope Validation Group' })
+          .expect(201)
+      ).body;
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/groups/${scopeGroup.id}/organization-scopes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ organizationId: '00000000-0000-0000-0000-000000000000' })
+        .expect(404);
+
+      // A unit that exists, but not under this organization.
+      await request(app.getHttpServer())
+        .post(`/api/v1/groups/${scopeGroup.id}/organization-scopes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ organizationId: orgB.id, organizationUnitId: unitA.id })
+        .expect(404);
+
+      const scope = (
+        await request(app.getHttpServer())
+          .post(`/api/v1/groups/${scopeGroup.id}/organization-scopes`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ organizationId: orgA.id, organizationUnitId: unitA.id })
+          .expect(201)
+      ).body;
+
+      const listed = await request(app.getHttpServer())
+        .get(`/api/v1/groups/${scopeGroup.id}/organization-scopes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect(listed.body).toHaveLength(1);
+      expect(listed.body[0].organizationUnit.id).toBe(unitA.id);
+
+      // Gated behind groups.manage, not just any authenticated user.
+      const viewerLogin = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'viewer@example.com', password: 'ViewerPass123!' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .delete(
+          `/api/v1/groups/${scopeGroup.id}/organization-scopes/${scope.id}`,
+        )
+        .set('Authorization', `Bearer ${viewerLogin.body.accessToken}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .delete(
+          `/api/v1/groups/${scopeGroup.id}/organization-scopes/${scope.id}`,
+        )
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      const afterRemoval = await request(app.getHttpServer())
+        .get(`/api/v1/groups/${scopeGroup.id}/organization-scopes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect(afterRemoval.body).toHaveLength(0);
     });
   });
 
@@ -2171,6 +2601,163 @@ describe('Inventarsystem API (e2e)', () => {
         .field('category', 'document')
         .attach('file', Buffer.from('nope'), 'nope.txt')
         .expect(403);
+    });
+  });
+
+  describe('general settings (name/logo/login methods)', () => {
+    it('GET /settings/general is public (no auth needed)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/settings/general')
+        .expect(200);
+      expect(res.body).toEqual(
+        expect.objectContaining({
+          displayName: expect.any(String),
+          churchToolsEnabled: expect.any(Boolean),
+          passkeyEnabled: expect.any(Boolean),
+          churchToolsAvailable: expect.any(Boolean),
+          passkeyAvailable: expect.any(Boolean),
+        }),
+      );
+    });
+
+    it('gates updates behind settings.manage', async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'viewer@example.com', password: 'ViewerPass123!' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put('/api/v1/settings/general')
+        .set('Authorization', `Bearer ${login.body.accessToken}`)
+        .send({ displayName: 'Should not work' })
+        .expect(403);
+    });
+
+    it('lets an admin update the display name and toggle login methods, reflected publicly', async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+      const token = login.body.accessToken;
+
+      const updated = await request(app.getHttpServer())
+        .put('/api/v1/settings/general')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          displayName: 'Mein Inventarsystem',
+          churchToolsEnabled: false,
+          passkeyEnabled: false,
+        })
+        .expect(200);
+      expect(updated.body.displayName).toBe('Mein Inventarsystem');
+
+      const publicConfig = await request(app.getHttpServer())
+        .get('/api/v1/settings/general')
+        .expect(200);
+      expect(publicConfig.body.displayName).toBe('Mein Inventarsystem');
+      // Disabled -> unavailable regardless of env-level ChurchTools config.
+      expect(publicConfig.body.churchToolsAvailable).toBe(false);
+      expect(publicConfig.body.passkeyAvailable).toBe(false);
+
+      // Restore defaults so later tests (and other suites) aren't affected.
+      await request(app.getHttpServer())
+        .put('/api/v1/settings/general')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          displayName: 'Inventarsystem',
+          churchToolsEnabled: true,
+          passkeyEnabled: true,
+        })
+        .expect(200);
+    });
+
+    it('rejects a disallowed logo mime type, and lets an admin upload/remove one', async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+      const token = login.body.accessToken;
+
+      await request(app.getHttpServer())
+        .post('/api/v1/settings/general/logo')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('file', Buffer.from('not-an-image'), {
+          filename: 'file.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(400);
+
+      const uploaded = await request(app.getHttpServer())
+        .post('/api/v1/settings/general/logo')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('file', Buffer.from('fake-png-bytes'), {
+          filename: 'logo.png',
+          contentType: 'image/png',
+        })
+        .expect(201);
+      expect(uploaded.body.logoDataUrl).toMatch(/^data:image\/png;base64,/);
+
+      const publicConfig = await request(app.getHttpServer())
+        .get('/api/v1/settings/general')
+        .expect(200);
+      expect(publicConfig.body.logoDataUrl).toMatch(/^data:image\/png;base64,/);
+
+      await request(app.getHttpServer())
+        .delete('/api/v1/settings/general/logo')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(204);
+
+      const afterRemoval = await request(app.getHttpServer())
+        .get('/api/v1/settings/general')
+        .expect(200);
+      expect(afterRemoval.body.logoDataUrl).toBeNull();
+    });
+  });
+
+  describe('dark mode preference', () => {
+    it('defaults to "system" and can be updated by the user themselves', async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+      const token = login.body.accessToken;
+
+      const me = await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(me.body.themePreference).toBe('system');
+
+      const updated = await request(app.getHttpServer())
+        .put('/api/v1/auth/theme')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ theme: 'dark' })
+        .expect(200);
+      expect(updated.body.themePreference).toBe('dark');
+
+      const meAfter = await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(meAfter.body.themePreference).toBe('dark');
+
+      // Restore default so other tests relying on admin state aren't affected.
+      await request(app.getHttpServer())
+        .put('/api/v1/auth/theme')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ theme: 'system' })
+        .expect(200);
+    });
+
+    it('rejects an invalid theme value', async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put('/api/v1/auth/theme')
+        .set('Authorization', `Bearer ${login.body.accessToken}`)
+        .send({ theme: 'purple' })
+        .expect(400);
     });
   });
 
@@ -2590,6 +3177,7 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({
           borrowerName: 'Blackout Borrower',
+          ...LOAN_BORROWER_FIELDS,
           checkoutDate: '2026-09-05T00:00:00.000Z',
           items: [{ inventoryItemId: item.id }],
         })
@@ -2606,6 +3194,7 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({
           borrowerName: 'Blackout Borrower',
+          ...LOAN_BORROWER_FIELDS,
           checkoutDate: '2026-09-05T00:00:00.000Z',
           items: [{ inventoryItemId: item.id }],
         })
@@ -2734,6 +3323,7 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({
           borrowerName: 'Save As Template Borrower',
+          ...LOAN_BORROWER_FIELDS,
           items: [{ inventoryItemId: item.id }],
           saveAsTemplate: { name: 'Aus Ausleihe gespeichert' },
         })
@@ -2877,12 +3467,12 @@ describe('Inventarsystem API (e2e)', () => {
       ).toBe(true);
     });
 
-    it('returns the checkout photo of the most recent loan for an inventory item', async () => {
+    it('the removed last-loan-photos endpoint is gone (superseded by movements)', async () => {
       const article = (
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'Last Loan Photo Article', type: 'UNIQUE' })
+          .send({ name: 'Removed Endpoint Article', type: 'UNIQUE' })
           .expect(201)
       ).body;
       const item = (
@@ -2899,18 +3489,43 @@ describe('Inventarsystem API (e2e)', () => {
           .expect(201)
       ).body;
 
-      const empty = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .get(`/api/v1/inventory/${item.id}/last-loan-photos`)
         .set('Authorization', `Bearer ${token}`)
-        .expect(200);
-      expect(empty.body).toEqual({ loanId: null, attachments: [] });
+        .expect(404);
+    });
 
+    it('links a movement to its loan item, with the checkout photo attached to that loan item', async () => {
+      const article = (
+        await request(app.getHttpServer())
+          .post('/api/v1/articles')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: 'Movement Link Article', type: 'UNIQUE' })
+          .expect(201)
+      ).body;
+      const item = (
+        await request(app.getHttpServer())
+          .post('/api/v1/inventory')
+          .set('Authorization', `Bearer ${token}`)
+          .send({
+            articleId: article.id,
+            locationId,
+            roomId,
+            ownerOrganizationId: orgId,
+            ownerUnitId: unitId,
+          })
+          .expect(201)
+      ).body;
+
+      // admin holds loans.administer -> auto-approved, then issue it to
+      // generate the stock movement that should link back to this loan item.
       const loan = (
         await request(app.getHttpServer())
           .post('/api/v1/loans')
           .set('Authorization', `Bearer ${token}`)
           .send({
-            borrowerName: 'Photo Borrower',
+            borrowerName: 'Movement Link Borrower',
+            ...LOAN_BORROWER_FIELDS,
             items: [{ inventoryItemId: item.id }],
           })
           .expect(201)
@@ -2924,13 +3539,100 @@ describe('Inventarsystem API (e2e)', () => {
         .attach('file', Buffer.from('fake-jpeg-bytes'), 'checkout.jpg')
         .expect(201);
 
-      const withPhoto = await request(app.getHttpServer())
-        .get(`/api/v1/inventory/${item.id}/last-loan-photos`)
+      await request(app.getHttpServer())
+        .post(`/api/v1/loans/${loan.id}/issue`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({})
+        .expect(201);
+
+      const movements = await request(app.getHttpServer())
+        .get(`/api/v1/inventory/${item.id}/movements`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
-      expect(withPhoto.body.loanId).toBe(loan.id);
-      expect(withPhoto.body.attachments).toHaveLength(1);
-      expect(withPhoto.body.attachments[0].category).toBe('checkoutPhoto');
+      const issueMovement = movements.body.find(
+        (m: { loanItem: { id: string } | null }) =>
+          m.loanItem?.id === loanItemId,
+      );
+      expect(issueMovement).toBeDefined();
+      expect(issueMovement.loanItem.loanId).toBe(loan.id);
+
+      const photos = await request(app.getHttpServer())
+        .get(
+          `/api/v1/attachments?entityType=loanItem&entityId=${loanItemId}&category=checkoutPhoto`,
+        )
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(photos.body).toHaveLength(1);
+    });
+  });
+
+  describe('article search', () => {
+    let token: string;
+
+    beforeAll(async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+      token = login.body.accessToken;
+    });
+
+    it('searches articles by name, manufacturer and category name, and combines with the type filter', async () => {
+      const category = (
+        await request(app.getHttpServer())
+          .post('/api/v1/categories')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: 'Funkmikrofone' })
+          .expect(201)
+      ).body;
+      const article = (
+        await request(app.getHttpServer())
+          .post('/api/v1/articles')
+          .set('Authorization', `Bearer ${token}`)
+          .send({
+            name: 'Drahtlosmikrofon Set',
+            type: 'UNIQUE',
+            manufacturer: 'Sennheiser',
+            categoryId: category.id,
+          })
+          .expect(201)
+      ).body;
+
+      const byName = await request(app.getHttpServer())
+        .get('/api/v1/articles?search=Drahtlosmikrofon')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(
+        byName.body.data.some((a: { id: string }) => a.id === article.id),
+      ).toBe(true);
+
+      const byManufacturer = await request(app.getHttpServer())
+        .get('/api/v1/articles?search=Sennheiser')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(
+        byManufacturer.body.data.some(
+          (a: { id: string }) => a.id === article.id,
+        ),
+      ).toBe(true);
+
+      const byCategoryName = await request(app.getHttpServer())
+        .get('/api/v1/articles?search=Funkmikrofone')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(
+        byCategoryName.body.data.some(
+          (a: { id: string }) => a.id === article.id,
+        ),
+      ).toBe(true);
+
+      const noMatch = await request(app.getHttpServer())
+        .get('/api/v1/articles?search=Drahtlosmikrofon&type=CONSUMABLE')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(
+        noMatch.body.data.some((a: { id: string }) => a.id === article.id),
+      ).toBe(false);
     });
   });
 });

@@ -13,6 +13,7 @@ export const PERMISSIONS = {
   LOANS_CREATE: 'loans.create',
   LOANS_VIEW: 'loans.view',
   LOANS_MANAGE: 'loans.manage',
+  LOANS_SPEND: 'loans.spend',
   LOANS_ADMINISTER: 'loans.administer',
   REPORTS_VIEW: 'reports.view',
   SETTINGS_MANAGE: 'settings.manage',

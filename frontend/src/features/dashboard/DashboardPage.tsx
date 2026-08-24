@@ -30,10 +30,15 @@ export function DashboardPage() {
   const openLoansCount = useQuery({
     queryKey: ['count', 'loans-open'],
     queryFn: async () => {
-      const res = await api.get<PaginatedResult<unknown>>('/loans', {
-        params: { pageSize: 1, status: 'open' },
-      });
-      return res.data.meta.total;
+      const counts = await Promise.all(
+        (['requested', 'approved', 'issued'] as const).map(async (status) => {
+          const res = await api.get<PaginatedResult<unknown>>('/loans', {
+            params: { pageSize: 1, status },
+          });
+          return res.data.meta.total;
+        }),
+      );
+      return counts.reduce((sum, n) => sum + n, 0);
     },
     enabled: hasPermission(PERMISSIONS.LOANS_MANAGE),
   });

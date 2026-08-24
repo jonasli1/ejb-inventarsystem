@@ -3,16 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  ArticleType,
-  AttachmentEntityType,
-  Prisma,
-  StockMovementType,
-} from '@prisma/client';
+import { ArticleType, Prisma, StockMovementType } from '@prisma/client';
 import * as crypto from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate } from '../common/dto/pagination-query.dto';
-import { AttachmentsService } from '../attachments/attachments.service';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto';
 import { UpdateInventoryItemDto } from './dto/update-inventory-item.dto';
 import { MoveInventoryItemDto } from './dto/move-inventory-item.dto';
@@ -28,10 +22,7 @@ const INVENTORY_ITEM_INCLUDE = {
 
 @Injectable()
 export class InventoryService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly attachments: AttachmentsService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: QueryInventoryItemDto) {
     const page = query.page ?? 1;
@@ -162,24 +153,6 @@ export class InventoryService {
     });
     if (!item) throw new NotFoundException('Inventory item not found.');
     return item;
-  }
-
-  /** Checkout/return photos attached to this item's most recent loan, if any. */
-  async getLastLoanPhotos(id: string) {
-    await this.findOne(id);
-
-    const lastLoanItem = await this.prisma.loanItem.findFirst({
-      where: { inventoryItemId: id },
-      orderBy: { loan: { checkoutDate: 'desc' } },
-      select: { id: true, loanId: true },
-    });
-    if (!lastLoanItem) return { loanId: null, attachments: [] };
-
-    const attachments = await this.attachments.list(
-      AttachmentEntityType.loanItem,
-      lastLoanItem.id,
-    );
-    return { loanId: lastLoanItem.loanId, attachments };
   }
 
   async create(dto: CreateInventoryItemDto, userId?: string) {
@@ -314,6 +287,7 @@ export class InventoryService {
         fromRoom: true,
         toRoom: true,
         user: { select: { id: true, displayName: true } },
+        loanItem: { select: { id: true, loanId: true } },
       },
       orderBy: { createdAt: 'desc' },
     });

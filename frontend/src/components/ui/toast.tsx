@@ -41,8 +41,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               className={clsx(
                 'flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm shadow-lg',
                 t.tone === 'success'
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                  : 'border-red-200 bg-red-50 text-red-800',
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
+                  : 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200',
               )}
             >
               {t.tone === 'success' ? (

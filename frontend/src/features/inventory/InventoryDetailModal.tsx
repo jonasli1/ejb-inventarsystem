@@ -1,27 +1,24 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
-import { ArrowRightLeft, Trash2 } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowRightLeft, History, Trash2 } from 'lucide-react';
 import { api, getApiErrorMessage } from '@/lib/api-client';
 import { useLocations, useOrganizationUnits, useOrganizations, useRooms } from '@/lib/reference-data';
-import type { InventoryItem, InventoryStatus, LastLoanPhotos, StockMovement } from '@/lib/api-types';
+import type { InventoryItem, InventoryStatus } from '@/lib/api-types';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { InventoryStatusBadge } from '@/components/ui/Badge';
-import {
-  INVENTORY_STATUS_LABEL,
-  MANUALLY_ASSIGNABLE_INVENTORY_STATUSES,
-  MOVEMENT_TYPE_LABEL,
-} from '@/lib/status-labels';
+import { INVENTORY_STATUS_LABEL, MANUALLY_ASSIGNABLE_INVENTORY_STATUSES } from '@/lib/status-labels';
 import { useToast } from '@/components/ui/toast';
 import { ExportButtons } from '@/components/ui/ExportButtons';
-import { AttachmentThumbnail, FileUploadList } from '@/components/ui/FileUploadList';
+import { FileUploadList } from '@/components/ui/FileUploadList';
+import { ArticleImageThumbnail } from '@/components/ui/ArticleImageThumbnail';
 import { downloadExport } from '@/lib/export';
 import { useAuth } from '@/auth/useAuth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { MovementHistoryModal } from './MovementHistoryModal';
 
 interface EditForm {
   status: InventoryStatus;
@@ -53,6 +50,7 @@ export function InventoryDetailModal({
   const isConsumable = item.article.type === 'CONSUMABLE';
   const isBorrowed = item.status === 'borrowed';
   const [moveOpen, setMoveOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const { register, handleSubmit, watch, reset } = useForm<EditForm>({
     defaultValues: {
@@ -82,16 +80,6 @@ export function InventoryDetailModal({
       ownerUnitId: item.ownerUnitId,
     });
   }, [item, reset]);
-
-  const movementsQuery = useQuery({
-    queryKey: ['inventory', item.id, 'movements'],
-    queryFn: async () => (await api.get<StockMovement[]>(`/inventory/${item.id}/movements`)).data,
-  });
-
-  const lastLoanPhotosQuery = useQuery({
-    queryKey: ['inventory', item.id, 'last-loan-photos'],
-    queryFn: async () => (await api.get<LastLoanPhotos>(`/inventory/${item.id}/last-loan-photos`)).data,
-  });
 
   const updateMutation = useMutation({
     mutationFn: async (values: EditForm) =>
@@ -132,13 +120,14 @@ export function InventoryDetailModal({
     <>
       <Modal open onClose={onClose} title={item.inventoryNumber} size="lg">
         <div className="mb-4 flex flex-wrap items-center gap-2">
+          <ArticleImageThumbnail articleId={item.articleId} size="h-9 w-9" />
           <InventoryStatusBadge status={item.status} />
           <span className="text-sm text-muted">{item.article.name}</span>
           <span className="text-sm text-muted">·</span>
           <span className="text-sm text-muted">
             {item.location.name} / {item.room.name}
           </span>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             {canExport && (
               <ExportButtons
                 onExport={(fmt) =>
@@ -150,6 +139,10 @@ export function InventoryDetailModal({
                 }
               />
             )}
+            <Button variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}>
+              <History size={14} />
+              Bewegungshistorie
+            </Button>
             {canManage && (
               <Button variant="secondary" size="sm" onClick={() => setMoveOpen(true)}>
                 <ArrowRightLeft size={14} />
@@ -218,7 +211,7 @@ export function InventoryDetailModal({
           <div className="sm:col-span-2">
             <Field label="Notizen">
               <textarea
-                className="w-full rounded-lg border border-border bg-white p-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-canvas"
+                className="w-full rounded-lg border border-border bg-surface p-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-canvas"
                 rows={2}
                 disabled={!canManage}
                 {...register('notes')}
@@ -250,7 +243,7 @@ export function InventoryDetailModal({
             entityId={item.id}
             category="document"
             canManage={canManage}
-            title="Dateien"
+            title="Dokumente (z. B. Anleitungen)"
           />
           <FileUploadList
             entityType="inventoryItem"
@@ -260,54 +253,10 @@ export function InventoryDetailModal({
             title="Prüfdokumente (z. B. E-Check)"
           />
         </div>
-
-        {!!lastLoanPhotosQuery.data?.attachments.length && (
-          <div className="mt-6 border-t border-border pt-4">
-            <h3 className="mb-2 text-sm font-semibold text-ink">Fotos der letzten Ausleihe</h3>
-            <ul className="flex flex-wrap gap-2">
-              {lastLoanPhotosQuery.data.attachments.map((att) => (
-                <li key={att.id} className="flex flex-col items-center gap-1">
-                  <AttachmentThumbnail attachment={att} />
-                  <span className="text-xs text-muted">
-                    {att.category === 'checkoutPhoto' ? 'Herausgabe' : 'Rücknahme'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="mt-6 border-t border-border pt-4">
-          <h3 className="mb-2 text-sm font-semibold text-ink">Bewegungshistorie</h3>
-          {movementsQuery.isLoading && <p className="text-sm text-muted">Lädt …</p>}
-          {movementsQuery.data && movementsQuery.data.length === 0 && (
-            <p className="text-sm text-muted">Keine Bewegungen vorhanden.</p>
-          )}
-          <ul className="flex flex-col gap-2">
-            {movementsQuery.data?.map((m) => (
-              <li key={m.id} className="rounded-lg bg-canvas px-3 py-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-ink">{MOVEMENT_TYPE_LABEL[m.type] ?? m.type}</span>
-                  <span className="text-xs text-muted">
-                    {format(new Date(m.createdAt), 'dd.MM.yyyy HH:mm')}
-                  </span>
-                </div>
-                <p className="text-xs text-muted">
-                  {m.oldStatus &&
-                    m.newStatus &&
-                    `${INVENTORY_STATUS_LABEL[m.oldStatus] ?? m.oldStatus} → ${INVENTORY_STATUS_LABEL[m.newStatus] ?? m.newStatus}`}
-                  {m.fromRoom && m.toRoom && `${m.fromRoom.name} → ${m.toRoom.name}`}
-                  {m.oldCondition != null && m.newCondition != null && `${m.oldCondition}% → ${m.newCondition}%`}
-                  {m.note && ` · ${m.note}`}
-                  {m.user && ` · ${m.user.displayName}`}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </div>
       </Modal>
 
       {moveOpen && <MoveModal item={item} onClose={() => setMoveOpen(false)} onDone={onClose} />}
+      {historyOpen && <MovementHistoryModal item={item} onClose={() => setHistoryOpen(false)} />}
     </>
   );
 }

@@ -17,9 +17,10 @@ export class UpdateLoanItemDto {
   inventoryItemId: string;
 }
 
-// Address/contact/notes/date changes never require re-approval. Items can be
-// replaced at any status short of "completed" (see LoansService.update for
-// the exact inventory-status side effects this can trigger on an issued loan).
+// All fields stay optional here (unlike CreateLoanDto): this is a partial
+// PATCH, and editing an already-issued or legacy loan must not force
+// re-supplying every field. Editing a not-yet-issued loan resets its status
+// back to "requested" - see LoansService.update.
 export class UpdateLoanDto {
   @ApiPropertyOptional()
   @IsOptional()

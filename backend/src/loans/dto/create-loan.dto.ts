@@ -59,25 +59,24 @@ export class CreateLoanDto {
   @IsString()
   borrowerName?: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
+  @ApiProperty()
   @IsString()
-  borrowerStreet?: string;
+  @MinLength(1)
+  borrowerStreet: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
+  @ApiProperty()
   @IsString()
-  borrowerCity?: string;
+  @MinLength(1)
+  borrowerCity: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
+  @ApiProperty()
   @IsEmail()
-  borrowerEmail?: string;
+  borrowerEmail: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
+  @ApiProperty()
   @IsString()
-  borrowerPhone?: string;
+  @MinLength(1)
+  borrowerPhone: string;
 
   @ApiPropertyOptional({
     description:
@@ -87,10 +86,9 @@ export class CreateLoanDto {
   @IsDateString()
   checkoutDate?: string;
 
-  @ApiPropertyOptional({ description: 'Planned return date.' })
-  @IsOptional()
+  @ApiProperty({ description: 'Planned return date.' })
   @IsDateString()
-  dueDate?: string;
+  dueDate: string;
 
   @ApiPropertyOptional()
   @IsOptional()

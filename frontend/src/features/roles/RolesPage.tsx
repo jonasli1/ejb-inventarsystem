@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Lock, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, Info, Lock, Plus, Trash2 } from 'lucide-react';
+import { clsx } from 'clsx';
 import { api, getApiErrorMessage } from '@/lib/api-client';
 import type { Role } from '@/lib/api-types';
+import { PERMISSION_GROUPS, PERMISSION_INFO } from '@/lib/permission-labels';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Card } from '@/components/ui/Card';
+import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Input } from '@/components/ui/Input';
@@ -14,6 +16,46 @@ import { useToast } from '@/components/ui/toast';
 import { RoleDetailModal } from './RoleDetailModal';
 
 const PROTECTED_ROLE_NAME = 'Admin';
+
+function PermissionsInfoCard() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Card className="mb-4">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-3 px-5 py-4"
+        aria-expanded={open}
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+          <Info size={16} className="text-muted" />
+          Was bedeuten die Berechtigungen?
+        </span>
+        <ChevronDown size={16} className={clsx('text-muted transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <CardBody className="grid grid-cols-1 gap-6 border-t border-border pt-4 sm:grid-cols-2">
+          {PERMISSION_GROUPS.map((group) => (
+            <div key={group.title}>
+              <h3 className="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">
+                {group.title}
+              </h3>
+              <dl className="flex flex-col gap-2.5">
+                {group.permissions.map((key) => (
+                  <div key={key}>
+                    <dt className="text-sm font-medium text-ink">{PERMISSION_INFO[key].label}</dt>
+                    <dd className="text-xs text-muted">{PERMISSION_INFO[key].description}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))}
+        </CardBody>
+      )}
+    </Card>
+  );
+}
 
 export function RolesPage() {
   const [createOpen, setCreateOpen] = useState(false);
@@ -46,6 +88,8 @@ export function RolesPage() {
           </Button>
         }
       />
+
+      <PermissionsInfoCard />
 
       <Card>
         {query.isLoading ? (

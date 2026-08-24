@@ -7,13 +7,19 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { AuthProvider, GroupSource, type User } from '@prisma/client';
+import {
+  AuthProvider,
+  GroupSource,
+  ThemePreference,
+  type User,
+} from '@prisma/client';
 import * as argon2 from 'argon2';
 import * as crypto from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { GroupsService } from '../groups/groups.service';
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../notifications/email.service';
+import { AppSettingsService } from '../settings/app-settings.service';
 import {
   ChurchToolsService,
   ChurchToolsProfile,
@@ -42,6 +48,7 @@ export class AuthService {
     private readonly groups: GroupsService,
     private readonly users: UsersService,
     private readonly email: EmailService,
+    private readonly appSettings: AppSettingsService,
   ) {}
 
   // ---------------------------------------------------------------------
@@ -112,6 +119,18 @@ export class AuthService {
   /** Whether email is configured, i.e. whether the "forgot password" flow can deliver anything. */
   async isPasswordResetAvailable(): Promise<boolean> {
     return this.email.isConfigured();
+  }
+
+  async updateTheme(
+    userId: string,
+    theme: ThemePreference,
+  ): Promise<{ themePreference: ThemePreference }> {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { themePreference: theme },
+      select: { themePreference: true },
+    });
+    return user;
   }
 
   /**
@@ -213,6 +232,7 @@ export class AuthService {
       email: user.email,
       displayName: user.displayName,
       isActive: user.isActive,
+      themePreference: user.themePreference,
       createdAt: user.createdAt,
       authMethods: user.authIdentities.map((i) => i.provider),
       roles,
@@ -334,7 +354,12 @@ export class AuthService {
   // ChurchTools OAuth2 (PKCE) + group sync
   // ---------------------------------------------------------------------
 
-  getChurchToolsAuthorizationUrl() {
+  async getChurchToolsAuthorizationUrl() {
+    if (!(await this.appSettings.isChurchToolsEnabled())) {
+      throw new BadRequestException(
+        'ChurchTools login is disabled on this system.',
+      );
+    }
     return this.churchTools.buildAuthorizationUrl();
   }
 
@@ -456,7 +481,16 @@ export class AuthService {
   // Passkey / WebAuthn
   // ---------------------------------------------------------------------
 
+  private async assertPasskeyEnabled(): Promise<void> {
+    if (!(await this.appSettings.isPasskeyEnabled())) {
+      throw new BadRequestException(
+        'Passkey login is disabled on this system.',
+      );
+    }
+  }
+
   async createPasskeyRegistrationOptions(userId: string) {
+    await this.assertPasskeyEnabled();
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
     });
@@ -481,6 +515,7 @@ export class AuthService {
     response: RegistrationResponseJSON,
     deviceLabel?: string,
   ): Promise<void> {
+    await this.assertPasskeyEnabled();
     const verification = await this.webauthn.verifyRegistration(
       challengeId,
       response,
@@ -516,6 +551,7 @@ export class AuthService {
   }
 
   async createPasskeyLoginOptions(email?: string) {
+    await this.assertPasskeyEnabled();
     let allowCredentials: {
       id: string;
       transports?: AuthenticatorTransportFuture[];
@@ -541,6 +577,7 @@ export class AuthService {
     challengeId: string,
     response: AuthenticationResponseJSON,
   ): Promise<TokenResponseDto> {
+    await this.assertPasskeyEnabled();
     const credentialId: string | undefined = response?.id;
     if (!credentialId) {
       throw new BadRequestException('Missing credential id in response.');

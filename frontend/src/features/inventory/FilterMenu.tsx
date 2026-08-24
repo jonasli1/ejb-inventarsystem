@@ -59,7 +59,7 @@ export function FilterMenu({
         Filter hinzufügen
       </Button>
       {open && (
-        <div className="absolute left-0 z-20 mt-1.5 w-72 rounded-lg border border-border bg-white p-3 shadow-lg">
+        <div className="absolute left-0 z-20 mt-1.5 w-72 rounded-lg border border-border bg-surface p-3 shadow-lg">
           <div className="flex flex-col gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-muted">Filterart</label>

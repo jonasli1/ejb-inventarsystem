@@ -166,6 +166,13 @@ export class EmailService {
     eventKey: string,
     subject: string,
     body: string,
+    // Further restricts eligible recipients beyond the event's base
+    // permission requirement - e.g. loan.* events use this to only notify
+    // approvers/issuers whose group is actually scoped to the loan's
+    // organization/unit. Domain-specific (org scoping etc.) on purpose lives
+    // in the caller, not here, so this service stays free of dependencies on
+    // GroupsModule or any other domain module.
+    eligible?: (recipient: { id: string; permissions: Set<string> }) => boolean,
   ): Promise<void> {
     const eventDef = NOTIFICATION_EVENT_BY_KEY.get(eventKey);
     if (!eventDef) return;
@@ -188,16 +195,36 @@ export class EmailService {
         },
       },
       select: {
+        id: true,
         email: true,
         notificationPreferences: {
           where: { eventKey },
           select: { enabled: true },
+        },
+        userRoles: {
+          select: {
+            role: {
+              select: {
+                rolePermissions: {
+                  select: { permission: { select: { key: true } } },
+                },
+              },
+            },
+          },
         },
       },
     });
 
     for (const recipient of recipients) {
       if (recipient.notificationPreferences[0]?.enabled === false) continue;
+      if (eligible) {
+        const permissions = new Set(
+          recipient.userRoles.flatMap((ur) =>
+            ur.role.rolePermissions.map((rp) => rp.permission.key),
+          ),
+        );
+        if (!eligible({ id: recipient.id, permissions })) continue;
+      }
 
       try {
         await target.transport.sendMail({

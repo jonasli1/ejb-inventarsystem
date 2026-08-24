@@ -20,19 +20,29 @@ import { CreateLoanDto } from './dto/create-loan.dto';
 import { UpdateLoanDto } from './dto/update-loan.dto';
 import { ReturnLoanDto } from './dto/return-loan.dto';
 import { IssueLoanDto } from './dto/issue-loan.dto';
+import { ApproveLoanDto } from './dto/approve-loan.dto';
 import { QueryLoanDto } from './dto/query-loan.dto';
 import { CalendarQueryDto } from './dto/calendar-query.dto';
 
 const VIEW_OR_ABOVE = [
   PERMISSIONS.LOANS_VIEW,
   PERMISSIONS.LOANS_MANAGE,
+  PERMISSIONS.LOANS_SPEND,
   PERMISSIONS.LOANS_ADMINISTER,
 ];
 const MANAGE_OR_ABOVE = [
   PERMISSIONS.LOANS_MANAGE,
   PERMISSIONS.LOANS_ADMINISTER,
 ];
+const SPEND_OR_ADMINISTER = [
+  PERMISSIONS.LOANS_SPEND,
+  PERMISSIONS.LOANS_ADMINISTER,
+];
 const CREATE_OR_ABOVE = [PERMISSIONS.LOANS_CREATE, ...MANAGE_OR_ABOVE];
+// Editing a loan is allowed for its creator even with only loans.create -
+// the controller only needs to admit that tier; LoansService.assertCanEditLoan
+// enforces the actual "creator OR manage OR administer" rule per loan.
+const EDIT_OR_ABOVE = CREATE_OR_ABOVE;
 
 @ApiTags('loans')
 @ApiBearerAuth()
@@ -64,7 +74,7 @@ export class LoansController {
     return this.loansService.create(dto, user);
   }
 
-  @RequireAnyPermission(...MANAGE_OR_ABOVE)
+  @RequireAnyPermission(...EDIT_OR_ABOVE)
   @Put(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -78,12 +88,13 @@ export class LoansController {
   @Post(':id/approve')
   approve(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ApproveLoanDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.loansService.approve(id, user);
+    return this.loansService.approve(id, dto, user);
   }
 
-  @RequireAnyPermission(...MANAGE_OR_ABOVE)
+  @RequireAnyPermission(...SPEND_OR_ADMINISTER)
   @Post(':id/issue')
   issue(
     @Param('id', ParseUUIDPipe) id: string,
@@ -102,7 +113,7 @@ export class LoansController {
     return this.loansService.resetStatus(id, user);
   }
 
-  @RequireAnyPermission(...MANAGE_OR_ABOVE)
+  @RequireAnyPermission(...SPEND_OR_ADMINISTER)
   @Post(':id/return')
   returnLoan(
     @Param('id', ParseUUIDPipe) id: string,

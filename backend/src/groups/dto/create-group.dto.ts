@@ -1,5 +1,5 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
+import { IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateGroupDto {
   @ApiProperty()
@@ -11,12 +11,4 @@ export class CreateGroupDto {
   @IsOptional()
   @IsString()
   description?: string;
-
-  @ApiPropertyOptional({
-    description:
-      'The organization this group belongs to. Members inherit this as their organization for the org-scoped loans.manage permission.',
-  })
-  @IsOptional()
-  @IsUUID()
-  organizationId?: string;
 }

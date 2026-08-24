@@ -4,7 +4,9 @@ import { queryClient } from '@/lib/query-client';
 import { AuthProvider } from '@/auth/AuthContext';
 import { ProtectedRoute } from '@/auth/ProtectedRoute';
 import { ToastProvider } from '@/components/ui/toast';
+import { LightboxProvider } from '@/components/ui/ImageLightbox';
 import { AppShell } from '@/components/layout/AppShell';
+import { AppBranding } from '@/components/layout/AppBranding';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
@@ -21,6 +23,7 @@ import { UsersPage } from '@/features/users/UsersPage';
 import { RolesPage } from '@/features/roles/RolesPage';
 import { GroupsPage } from '@/features/groups/GroupsPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
+import { GeneralSettingsPage } from '@/features/settings/GeneralSettingsPage';
 import { BackupPage } from '@/features/settings/BackupPage';
 import { EmailSettingsPage } from '@/features/settings/EmailSettingsPage';
 import { OneDriveCallbackPage } from '@/features/settings/OneDriveCallbackPage';
@@ -30,9 +33,11 @@ import { PERMISSIONS } from '@/lib/permissions';
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <AppBranding />
       <ToastProvider>
-        <AuthProvider>
-          <BrowserRouter>
+        <LightboxProvider>
+          <AuthProvider>
+            <BrowserRouter>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -82,6 +87,7 @@ function App() {
                           PERMISSIONS.LOANS_CREATE,
                           PERMISSIONS.LOANS_VIEW,
                           PERMISSIONS.LOANS_MANAGE,
+                          PERMISSIONS.LOANS_SPEND,
                           PERMISSIONS.LOANS_ADMINISTER,
                         ]}
                       >
@@ -96,6 +102,7 @@ function App() {
                         permission={[
                           PERMISSIONS.LOANS_VIEW,
                           PERMISSIONS.LOANS_MANAGE,
+                          PERMISSIONS.LOANS_SPEND,
                           PERMISSIONS.LOANS_ADMINISTER,
                         ]}
                       >
@@ -137,6 +144,14 @@ function App() {
                   />
                   <Route path="profile" element={<ProfilePage />} />
                   <Route
+                    path="settings/general"
+                    element={
+                      <PermissionGate permission={PERMISSIONS.SETTINGS_MANAGE}>
+                        <GeneralSettingsPage />
+                      </PermissionGate>
+                    }
+                  />
+                  <Route
                     path="settings/backup"
                     element={
                       <PermissionGate permission={PERMISSIONS.SETTINGS_MANAGE}>
@@ -165,8 +180,9 @@ function App() {
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-          </BrowserRouter>
-        </AuthProvider>
+            </BrowserRouter>
+          </AuthProvider>
+        </LightboxProvider>
       </ToastProvider>
     </QueryClientProvider>
   );

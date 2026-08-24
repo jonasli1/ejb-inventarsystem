@@ -13,6 +13,7 @@ export const PERMISSIONS = {
   LOANS_CREATE: 'loans.create',
   LOANS_VIEW: 'loans.view',
   LOANS_MANAGE: 'loans.manage',
+  LOANS_SPEND: 'loans.spend',
   LOANS_ADMINISTER: 'loans.administer',
   REPORTS_VIEW: 'reports.view',
   SETTINGS_MANAGE: 'settings.manage',
@@ -74,7 +75,12 @@ export const ALL_PERMISSIONS: { key: PermissionKey; description: string }[] = [
   {
     key: PERMISSIONS.LOANS_MANAGE,
     description:
-      "Approve, issue, return and directly create loans for the user's own organization(s)",
+      "Approve and directly create loans for organizations/units the user's group(s) are scoped to; issuing/returning requires loans.spend",
+  },
+  {
+    key: PERMISSIONS.LOANS_SPEND,
+    description:
+      "Issue (hand out) and take back loan items for organizations/units the user's group(s) are scoped to, independent of loans.manage",
   },
   {
     key: PERMISSIONS.LOANS_ADMINISTER,

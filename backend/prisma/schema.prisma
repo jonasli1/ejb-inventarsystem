@@ -99,13 +99,14 @@ enum BackupFrequency {
 // ---------------------------------------------------------------------------
 
 model User {
-  id          String    @id @default(uuid())
-  displayName String    @map("display_name")
-  email       String    @unique
-  isActive    Boolean   @default(true) @map("is_active")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
+  id               String           @id @default(uuid())
+  displayName      String           @map("display_name")
+  email            String           @unique
+  isActive         Boolean          @default(true) @map("is_active")
+  themePreference  ThemePreference  @default(system) @map("theme_preference")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  deletedAt        DateTime?        @map("deleted_at")
 
   authIdentities          AuthIdentity[]
   refreshTokens           RefreshToken[]
@@ -113,6 +114,7 @@ model User {
   userGroups              UserGroup[]
   stockMovements          StockMovement[]
   loansLent               Loan[]                   @relation("LoanLentBy")
+  loanItemApprovals       LoanItem[]               @relation("LoanItemApprovedBy")
   auditLogs               AuditLog[]
   attachments             Attachment[]
   loanBlackoutPeriods     LoanBlackoutPeriod[]
@@ -121,6 +123,12 @@ model User {
   passwordResetTokens     PasswordResetToken[]
 
   @@map("users")
+}
+
+enum ThemePreference {
+  light
+  dark
+  system
 }
 
 model AuthIdentity {
@@ -240,21 +248,42 @@ model UserRole {
 // ---------------------------------------------------------------------------
 
 model Group {
-  id             String    @id @default(uuid())
-  name           String
-  externalRef    String?   @unique @map("external_ref")
-  description    String?
-  organizationId String?   @map("organization_id")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-  deletedAt      DateTime? @map("deleted_at")
+  id          String    @id @default(uuid())
+  name        String
+  externalRef String?   @unique @map("external_ref")
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
 
-  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  userGroups   UserGroup[]
-  groupRoles   GroupRole[]
+  userGroups         UserGroup[]
+  groupRoles         GroupRole[]
+  organizationScopes GroupOrganizationScope[]
 
-  @@index([organizationId])
   @@map("groups")
+}
+
+// A group's scope over an Organization (organizationUnitId: null) or a
+// specific OrganizationUnit within it - the basis for org/unit-scoped loan
+// approval/issue/return authorization. A group may hold several scopes.
+model GroupOrganizationScope {
+  id                 String   @id @default(uuid())
+  groupId            String   @map("group_id")
+  organizationId     String   @map("organization_id")
+  organizationUnitId String?  @map("organization_unit_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  group            Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationUnit OrganizationUnit? @relation(fields: [organizationUnitId], references: [id], onDelete: Cascade)
+
+  // NULLS NOT DISTINCT is hand-added in the migration SQL (Prisma's DSL can't
+  // express it): without it, two whole-org (organizationUnitId IS NULL) rows
+  // could be inserted for the same group+organization.
+  @@unique([groupId, organizationId, organizationUnitId])
+  @@index([organizationId])
+  @@index([organizationUnitId])
+  @@map("group_organization_scopes")
 }
 
 // A role automatically granted to members of a group. Kept separate from
@@ -300,7 +329,7 @@ model Organization {
 
   units          OrganizationUnit[]
   inventoryItems InventoryItem[]
-  groups         Group[]
+  groupScopes    GroupOrganizationScope[]
 
   @@map("organizations")
 }
@@ -313,8 +342,9 @@ model OrganizationUnit {
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   inventoryItems InventoryItem[]
+  groupScopes    GroupOrganizationScope[]
 
   @@unique([organizationId, name])
   @@map("organization_units")
@@ -439,6 +469,7 @@ model StockMovement {
   oldCondition    Int?              @map("old_condition")
   newCondition    Int?              @map("new_condition")
   userId          String?           @map("user_id")
+  loanItemId      String?           @map("loan_item_id")
   createdAt       DateTime          @default(now()) @map("created_at")
   note            String?
 
@@ -446,8 +477,10 @@ model StockMovement {
   fromRoom      Room?         @relation("MovementFromRoom", fields: [fromRoomId], references: [id])
   toRoom        Room?         @relation("MovementToRoom", fields: [toRoomId], references: [id])
   user          User?         @relation(fields: [userId], references: [id])
+  loanItem      LoanItem?     @relation(fields: [loanItemId], references: [id], onDelete: SetNull)
 
   @@index([inventoryItemId])
+  @@index([loanItemId])
   @@map("stock_movements")
 }
 
@@ -490,10 +523,14 @@ model LoanItem {
   checkedOutCondition Int?      @map("checked_out_condition")
   returnedCondition   Int?      @map("returned_condition")
   returnedAt          DateTime? @map("returned_at")
+  approvedAt          DateTime? @map("approved_at")
+  approvedByUserId    String?   @map("approved_by_user_id")
   createdAt           DateTime  @default(now()) @map("created_at")
 
-  loan          Loan          @relation(fields: [loanId], references: [id], onDelete: Cascade)
-  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  loan           Loan            @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  inventoryItem  InventoryItem   @relation(fields: [inventoryItemId], references: [id])
+  approvedBy     User?           @relation("LoanItemApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  stockMovements StockMovement[]
 
   @@index([loanId])
   @@index([inventoryItemId])
@@ -633,6 +670,18 @@ model LoanTemplateItem {
 // the permission that event requires (see notification-events.ts); pruned
 // automatically whenever a user's effective permissions shrink.
 // ---------------------------------------------------------------------------
+
+model AppSettings {
+  id                 String   @id @default(uuid())
+  displayName        String   @default("Inventarsystem") @map("display_name")
+  churchToolsEnabled Boolean  @default(true) @map("church_tools_enabled")
+  passkeyEnabled     Boolean  @default(true) @map("passkey_enabled")
+  logoData           Bytes?   @map("logo_data")
+  logoMimeType       String?  @map("logo_mime_type")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}
 
 model EmailConfig {
   id          String   @id @default(uuid())

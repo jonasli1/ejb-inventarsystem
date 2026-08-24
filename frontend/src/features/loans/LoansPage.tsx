@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { CalendarDays, LayoutTemplate, Plus } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '@/lib/api-client';
 import type { Loan, LoanStatus, PaginatedResult } from '@/lib/api-types';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -29,7 +29,26 @@ export function LoansPage() {
   const canView = canManage || hasPermission(PERMISSIONS.LOANS_VIEW) || canAdminister;
   const [createOpen, setCreateOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [viewingLoan, setViewingLoan] = useState<Loan | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [openLoan, setOpenLoan] = useState<{ id: string; initial?: Loan } | null>(() => {
+    const id = searchParams.get('loanId');
+    return id ? { id } : null;
+  });
+
+  useEffect(() => {
+    if (searchParams.get('loanId')) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('loanId');
+          return next;
+        },
+        { replace: true },
+      );
+    }
+    // Only ever meant to consume a `?loanId=` param present on initial mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div>
@@ -59,7 +78,7 @@ export function LoansPage() {
       />
 
       {canView ? (
-        <LoansList onSelect={setViewingLoan} />
+        <LoansList onSelect={(loan) => setOpenLoan({ id: loan.id, initial: loan })} />
       ) : (
         <Card>
           <div className="p-8 text-center text-sm text-muted">
@@ -73,16 +92,16 @@ export function LoansPage() {
       <LoanCreateModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(loan) => setViewingLoan(loan)}
+        onCreated={(loan) => setOpenLoan({ id: loan.id, initial: loan })}
       />
       {canAdminister && (
         <LoanTemplatesModal open={templatesOpen} onClose={() => setTemplatesOpen(false)} />
       )}
-      {viewingLoan && (
+      {openLoan && (
         <LoanDetailModal
-          loanId={viewingLoan.id}
-          initialLoan={viewingLoan}
-          onClose={() => setViewingLoan(null)}
+          loanId={openLoan.id}
+          initialLoan={openLoan.initial}
+          onClose={() => setOpenLoan(null)}
         />
       )}
     </div>

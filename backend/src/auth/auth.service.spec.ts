@@ -9,11 +9,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GroupsService } from '../groups/groups.service';
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../notifications/email.service';
+import { AppSettingsService } from '../settings/app-settings.service';
 
 describe('AuthService', () => {
   let service: AuthService;
   let prisma: {
-    user: { findUnique: jest.Mock };
+    user: { findUnique: jest.Mock; update: jest.Mock };
     refreshToken: {
       create: jest.Mock;
       findUnique: jest.Mock;
@@ -31,6 +32,10 @@ describe('AuthService', () => {
   let config: { get: jest.Mock };
   let users: { resetPassword: jest.Mock };
   let email: { isConfigured: jest.Mock; sendPasswordResetEmail: jest.Mock };
+  let appSettings: {
+    isChurchToolsEnabled: jest.Mock;
+    isPasskeyEnabled: jest.Mock;
+  };
 
   const CONFIG_VALUES: Record<string, string> = {
     'jwt.accessSecret': 'access-secret',
@@ -42,7 +47,10 @@ describe('AuthService', () => {
 
   beforeEach(() => {
     prisma = {
-      user: { findUnique: jest.fn() },
+      user: {
+        findUnique: jest.fn(),
+        update: jest.fn().mockResolvedValue({ themePreference: 'dark' }),
+      },
       refreshToken: {
         create: jest.fn().mockResolvedValue({}),
         findUnique: jest.fn(),
@@ -63,18 +71,27 @@ describe('AuthService', () => {
       isConfigured: jest.fn().mockResolvedValue(true),
       sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
     };
+    appSettings = {
+      isChurchToolsEnabled: jest.fn().mockResolvedValue(true),
+      isPasskeyEnabled: jest.fn().mockResolvedValue(true),
+    };
 
     service = new AuthService(
       prisma as unknown as PrismaService,
       jwt as unknown as JwtService,
       config as unknown as ConfigService,
-      {} as ChurchToolsService,
+      {
+        buildAuthorizationUrl: jest
+          .fn()
+          .mockReturnValue({ url: 'https://x', state: 's' }),
+      } as unknown as ChurchToolsService,
       {} as WebauthnService,
       {
         syncUserRoles: jest.fn().mockResolvedValue(undefined),
       } as unknown as GroupsService,
       users as unknown as UsersService,
       email as unknown as EmailService,
+      appSettings as unknown as AppSettingsService,
     );
   });
 
@@ -344,6 +361,41 @@ describe('AuthService', () => {
       expect(users.resetPassword).toHaveBeenCalledWith('user-1', {
         newPassword: 'newPassword1',
       });
+    });
+  });
+
+  describe('updateTheme', () => {
+    it('persists the given theme preference and returns it', async () => {
+      prisma.user.update.mockResolvedValue({ themePreference: 'dark' });
+      const result = await service.updateTheme('user-1', 'dark');
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { themePreference: 'dark' },
+        select: { themePreference: true },
+      });
+      expect(result).toEqual({ themePreference: 'dark' });
+    });
+  });
+
+  describe('login-method gating (AppSettings)', () => {
+    it('getChurchToolsAuthorizationUrl rejects when ChurchTools login is disabled', async () => {
+      appSettings.isChurchToolsEnabled.mockResolvedValue(false);
+      await expect(service.getChurchToolsAuthorizationUrl()).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('getChurchToolsAuthorizationUrl proceeds when enabled', async () => {
+      appSettings.isChurchToolsEnabled.mockResolvedValue(true);
+      const result = await service.getChurchToolsAuthorizationUrl();
+      expect(result).toEqual({ url: 'https://x', state: 's' });
+    });
+
+    it('createPasskeyLoginOptions rejects when passkey login is disabled', async () => {
+      appSettings.isPasskeyEnabled.mockResolvedValue(false);
+      await expect(service.createPasskeyLoginOptions()).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

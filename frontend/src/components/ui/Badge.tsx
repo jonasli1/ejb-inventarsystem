@@ -10,11 +10,11 @@ import {
 type Tone = 'neutral' | 'green' | 'amber' | 'red' | 'blue' | 'purple';
 
 const toneClasses: Record<Tone, string> = {
-  neutral: 'bg-black/5 text-ink',
-  green: 'bg-emerald-50 text-emerald-700',
-  amber: 'bg-amber-50 text-amber-700',
-  red: 'bg-red-50 text-red-700',
-  blue: 'bg-blue-50 text-blue-700',
+  neutral: 'bg-black/5 text-ink dark:bg-white/10',
+  green: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+  amber: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  red: 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300',
+  blue: 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
   purple: 'bg-brand-50 text-brand-700',
 };
 
