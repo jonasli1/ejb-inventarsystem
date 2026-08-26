@@ -47,11 +47,17 @@ export const PERMISSION_INFO: Record<PermissionKey, PermissionInfo> = {
   },
   [PERMISSIONS.INVENTORY_MANAGE]: {
     label: 'Inventar verwalten',
-    description: 'Inventarobjekte anlegen, bearbeiten und umlagern.',
+    description:
+      'Inventarobjekte anlegen, bearbeiten und umlagern. Ändern der Inventarnummer selbst erfordert zusätzlich "Inventarnummer ändern".',
   },
   [PERMISSIONS.INVENTORY_VIEW]: {
     label: 'Inventar ansehen',
     description: 'Inventarobjekte einsehen (lesend).',
+  },
+  [PERMISSIONS.INVENTORY_CHANGE_INV_NUM]: {
+    label: 'Inventarnummer ändern',
+    description:
+      'Die Inventarnummer eines Objekts ändern – unabhängig von der Berechtigung "Inventar verwalten".',
   },
   [PERMISSIONS.LOCATIONS_MANAGE]: {
     label: 'Lager verwalten',
@@ -74,7 +80,7 @@ export const PERMISSION_INFO: Record<PermissionKey, PermissionInfo> = {
   [PERMISSIONS.LOANS_SPEND]: {
     label: 'Ausleihen ausgeben',
     description:
-      'Objekte ausgeben und zurücknehmen, für die die eigene(n) Gruppe(n) der Organisation bzw. Untereinheit zugeordnet sind – unabhängig von der Berechtigung "Ausleihen genehmigen".',
+      'Objekte jeder Organisation ausgeben und zurücknehmen – unabhängig von der Berechtigung "Ausleihen genehmigen".',
   },
   [PERMISSIONS.LOANS_ADMINISTER]: {
     label: 'Ausleihen uneingeschränkt verwalten',
@@ -113,6 +119,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     permissions: [
       PERMISSIONS.INVENTORY_VIEW,
       PERMISSIONS.INVENTORY_MANAGE,
+      PERMISSIONS.INVENTORY_CHANGE_INV_NUM,
       PERMISSIONS.ARTICLES_MANAGE,
       PERMISSIONS.LOCATIONS_MANAGE,
     ],

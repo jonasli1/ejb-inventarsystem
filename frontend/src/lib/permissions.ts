@@ -9,6 +9,7 @@ export const PERMISSIONS = {
   ARTICLES_MANAGE: 'articles.manage',
   INVENTORY_MANAGE: 'inventory.manage',
   INVENTORY_VIEW: 'inventory.view',
+  INVENTORY_CHANGE_INV_NUM: 'inventory.change_inv_num',
   LOCATIONS_MANAGE: 'locations.manage',
   LOANS_CREATE: 'loans.create',
   LOANS_VIEW: 'loans.view',

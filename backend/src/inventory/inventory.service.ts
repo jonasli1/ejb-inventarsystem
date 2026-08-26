@@ -1,16 +1,40 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ArticleType, Prisma, StockMovementType } from '@prisma/client';
+import {
+  ArticleType,
+  InventoryStatus,
+  Prisma,
+  StockMovementType,
+} from '@prisma/client';
 import * as crypto from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate } from '../common/dto/pagination-query.dto';
+import { PERMISSIONS } from '../common/constants/permissions';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto';
 import { UpdateInventoryItemDto } from './dto/update-inventory-item.dto';
 import { MoveInventoryItemDto } from './dto/move-inventory-item.dto';
 import { QueryInventoryItemDto } from './dto/query-inventory-item.dto';
+
+// Fields UpdateInventoryItemDto carries besides inventoryNumber - gated by
+// inventory.manage. Kept as an explicit list (rather than inferred from the
+// DTO instance) so the manage-permission check is a simple, robust presence
+// check, not a value-diffing comparison against Prisma's Decimal/Date types.
+const MANAGE_GATED_UPDATE_KEYS = [
+  'articleId',
+  'ownerOrganizationId',
+  'ownerUnitId',
+  'status',
+  'serialNumber',
+  'conditionPercent',
+  'notes',
+  'purchasePrice',
+  'purchaseDate',
+] as const satisfies readonly (keyof UpdateInventoryItemDto)[];
 
 const INVENTORY_ITEM_INCLUDE = {
   article: true,
@@ -175,6 +199,7 @@ export class InventoryService {
       data: {
         ...dto,
         inventoryNumber,
+        status: dto.status ?? InventoryStatus.available,
         purchaseDate: dto.purchaseDate
           ? new Date(dto.purchaseDate)
           : new Date(),
@@ -197,8 +222,30 @@ export class InventoryService {
     return item;
   }
 
-  async update(id: string, dto: UpdateInventoryItemDto, userId?: string) {
+  async update(
+    id: string,
+    dto: UpdateInventoryItemDto,
+    user: AuthenticatedUser,
+  ) {
     const existing = await this.findOne(id);
+    const userId = user.id;
+
+    if (
+      dto.inventoryNumber !== undefined &&
+      !user.permissions.includes(PERMISSIONS.INVENTORY_CHANGE_INV_NUM)
+    ) {
+      throw new ForbiddenException(
+        'You do not have permission to change the inventory number.',
+      );
+    }
+    if (
+      MANAGE_GATED_UPDATE_KEYS.some((key) => dto[key] !== undefined) &&
+      !user.permissions.includes(PERMISSIONS.INVENTORY_MANAGE)
+    ) {
+      throw new ForbiddenException(
+        'You do not have permission to manage inventory items.',
+      );
+    }
 
     const articleType = dto.articleId
       ? (

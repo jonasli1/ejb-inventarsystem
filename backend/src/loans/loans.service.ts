@@ -116,13 +116,42 @@ export class LoansService {
     }));
   }
 
-  async findOne(id: string) {
+  // `actor` is only passed by the controller's single-loan GET; every
+  // internal call site (approve/issue/return/update/...) omits it since
+  // those already run their own, more specific authorization checks.
+  async findOne(id: string, actor?: AuthenticatedUser) {
     const loan = await this.prisma.loan.findFirst({
       where: { id, deletedAt: null },
       include: LOAN_INCLUDE,
     });
     if (!loan) throw new NotFoundException('Loan not found.');
+    if (actor) this.assertCanViewLoan(loan, actor);
     return loan;
+  }
+
+  /**
+   * findOne()'s actor check: the loan's creator may always look it up (even
+   * with only loans.create - e.g. after a reload, or via the movement
+   * history's "go to loan" link), matching assertCanEditLoan's same
+   * creator-always-allowed carve-out. Everyone else needs an actual
+   * view-tier-and-above permission.
+   */
+  private assertCanViewLoan(
+    loan: { lentByUserId: string },
+    user: AuthenticatedUser,
+  ): void {
+    if (loan.lentByUserId === user.id) return;
+    const hasViewTier = [
+      PERMISSIONS.LOANS_VIEW,
+      PERMISSIONS.LOANS_MANAGE,
+      PERMISSIONS.LOANS_SPEND,
+      PERMISSIONS.LOANS_ADMINISTER,
+    ].some((p) => user.permissions.includes(p));
+    if (!hasViewTier) {
+      throw new ForbiddenException(
+        'You do not have permission to view this loan.',
+      );
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -211,64 +240,30 @@ export class LoansService {
   }
 
   /**
-   * issue(): loans.spend or loans.administer. Still a single atomic whole-loan
-   * action (no partial-issue concept), so every item must be in scope.
+   * issue(): loans.spend or loans.administer may issue ANY loan, regardless
+   * of organization/unit - unlike approving, issuing/returning is not
+   * scoped to the actor's groups (a warehouse/spend role is assumed to
+   * physically hand out and take back items for the whole inventory).
    */
-  private async assertCanIssue(
-    loan: {
-      items: {
-        inventoryItem: { ownerOrganizationId: string; ownerUnitId: string };
-      }[];
-    },
-    user: AuthenticatedUser,
-  ): Promise<void> {
-    if (user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER)) return;
-    if (!user.permissions.includes(PERMISSIONS.LOANS_SPEND)) {
+  private assertCanIssue(user: AuthenticatedUser): void {
+    if (
+      !user.permissions.includes(PERMISSIONS.LOANS_SPEND) &&
+      !user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER)
+    ) {
       throw new ForbiddenException(
         'You do not have permission to issue this loan.',
       );
     }
-    const scope = await this.groups.getLoanScopeForUser(user.id);
-    const outOfScope = loan.items.find(
-      (i) => !this.isItemInScope(scope, i.inventoryItem),
-    );
-    if (outOfScope) {
-      throw new ForbiddenException(
-        'This loan includes items belonging to an organization/unit you are not scoped for.',
-      );
-    }
   }
 
-  /**
-   * returnLoan(): loans.spend or loans.administer. Only the items actually
-   * being returned in *this* call must be in scope - returns are already
-   * partial/multi-actor by design, unlike the atomic issue() step.
-   */
-  private async assertCanReturnItems(
-    loan: {
-      items: {
-        id: string;
-        inventoryItem: { ownerOrganizationId: string; ownerUnitId: string };
-      }[];
-    },
-    dto: ReturnLoanDto,
-    user: AuthenticatedUser,
-  ): Promise<void> {
-    if (user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER)) return;
-    if (!user.permissions.includes(PERMISSIONS.LOANS_SPEND)) {
+  /** returnLoan(): same unscoped loans.spend/loans.administer check as issue(). */
+  private assertCanReturnItems(user: AuthenticatedUser): void {
+    if (
+      !user.permissions.includes(PERMISSIONS.LOANS_SPEND) &&
+      !user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER)
+    ) {
       throw new ForbiddenException(
         'You do not have permission to return items on this loan.',
-      );
-    }
-    const scope = await this.groups.getLoanScopeForUser(user.id);
-    const relevantIds = new Set(dto.items.map((i) => i.loanItemId));
-    const outOfScope = loan.items.find(
-      (i) =>
-        relevantIds.has(i.id) && !this.isItemInScope(scope, i.inventoryItem),
-    );
-    if (outOfScope) {
-      throw new ForbiddenException(
-        'One or more returned items belong to an organization/unit you are not scoped for.',
       );
     }
   }
@@ -832,7 +827,7 @@ export class LoansService {
         `Only approved loans can be issued (current status: ${loan.status}).`,
       );
     }
-    await this.assertCanIssue(loan, user);
+    this.assertCanIssue(user);
 
     const overrides = new Map(
       (dto.items ?? []).map((i) => [i.loanItemId, i.checkedOutCondition]),
@@ -943,7 +938,7 @@ export class LoansService {
         `Only issued loans can be returned (current status: ${loan.status}).`,
       );
     }
-    await this.assertCanReturnItems(loan, dto, user);
+    this.assertCanReturnItems(user);
 
     const loanItemIds = new Set(loan.items.map((i) => i.id));
     for (const returnItem of dto.items) {

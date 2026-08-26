@@ -1,7 +1,31 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+
+const manageUser: AuthenticatedUser = {
+  id: 'user-manage',
+  email: 'manage@example.com',
+  displayName: 'Manage User',
+  permissions: ['inventory.manage'],
+};
+const changeInvNumUser: AuthenticatedUser = {
+  id: 'user-invnum',
+  email: 'invnum@example.com',
+  displayName: 'InvNum User',
+  permissions: ['inventory.change_inv_num'],
+};
+const bothUser: AuthenticatedUser = {
+  id: 'user-both',
+  email: 'both@example.com',
+  displayName: 'Both User',
+  permissions: ['inventory.manage', 'inventory.change_inv_num'],
+};
 
 describe('InventoryService', () => {
   let service: InventoryService;
@@ -11,6 +35,7 @@ describe('InventoryService', () => {
     organizationUnit: { findFirst: jest.Mock };
     inventoryItem: {
       create: jest.Mock;
+      update: jest.Mock;
       findFirst: jest.Mock;
       findMany: jest.Mock;
       count: jest.Mock;
@@ -51,6 +76,11 @@ describe('InventoryService', () => {
           .mockImplementation(({ data }) =>
             Promise.resolve({ id: 'item-1', ...data }),
           ),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }) =>
+            Promise.resolve({ id: 'item-1', ...data }),
+          ),
         findFirst: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
@@ -84,6 +114,12 @@ describe('InventoryService', () => {
     );
     expect(result).toBeDefined();
     expect(prisma.inventoryItem.create).toHaveBeenCalled();
+  });
+
+  it('defaults status to "available" when omitted', async () => {
+    await service.create(baseDto, 'user-1');
+    const createCall = prisma.inventoryItem.create.mock.calls[0][0];
+    expect(createCall.data.status).toBe('available');
   });
 
   it('auto-generates an inventory number in the INV-XXXX-XXXX format when omitted', async () => {
@@ -180,6 +216,62 @@ describe('InventoryService', () => {
           }),
         }),
       );
+    });
+  });
+
+  describe('update', () => {
+    const existingItem = {
+      id: 'item-1',
+      inventoryNumber: 'INV-OLD',
+      status: 'available',
+      conditionPercent: null,
+      article: { id: 'article-1', type: 'UNIQUE' },
+      ownerOrganizationId: 'org-1',
+      ownerUnitId: 'unit-1',
+    };
+
+    beforeEach(() => {
+      prisma.inventoryItem.findFirst.mockResolvedValue(existingItem);
+    });
+
+    it('rejects changing the inventory number without inventory.change_inv_num, even with inventory.manage', async () => {
+      await expect(
+        service.update('item-1', { inventoryNumber: 'INV-NEW' }, manageUser),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows changing the inventory number with only inventory.change_inv_num (no inventory.manage)', async () => {
+      const result = await service.update(
+        'item-1',
+        { inventoryNumber: 'INV-NEW' },
+        changeInvNumUser,
+      );
+      expect(result.inventoryNumber).toBe('INV-NEW');
+    });
+
+    it('rejects changing other fields without inventory.manage, even with inventory.change_inv_num', async () => {
+      await expect(
+        service.update('item-1', { notes: 'hello' }, changeInvNumUser),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows changing other fields with inventory.manage (no inventory.change_inv_num)', async () => {
+      const result = await service.update(
+        'item-1',
+        { notes: 'hello' },
+        manageUser,
+      );
+      expect(result.notes).toBe('hello');
+    });
+
+    it('allows changing both the inventory number and other fields when the actor has both permissions', async () => {
+      const result = await service.update(
+        'item-1',
+        { inventoryNumber: 'INV-NEW', notes: 'hello' },
+        bothUser,
+      );
+      expect(result.inventoryNumber).toBe('INV-NEW');
+      expect(result.notes).toBe('hello');
     });
   });
 });

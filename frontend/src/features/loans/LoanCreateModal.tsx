@@ -135,7 +135,16 @@ export function LoanCreateModal({
   });
 
   const updateItem = (index: number, patch: Partial<ItemRow>) => {
-    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
+    setItems((prev) => {
+      const next = prev.map((it, i) => (i === index ? { ...it, ...patch } : it));
+      // Once the last row has a selection, reveal a fresh empty row
+      // automatically instead of requiring a manual "Objekt hinzufügen" click.
+      const isLastRow = index === next.length - 1;
+      if (isLastRow && next[index].mode !== '') {
+        next.push(emptyRow());
+      }
+      return next;
+    });
   };
 
   return (

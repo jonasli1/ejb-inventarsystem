@@ -21,6 +21,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { MovementHistoryModal } from './MovementHistoryModal';
 
 interface EditForm {
+  inventoryNumber: string;
   status: InventoryStatus;
   serialNumber: string;
   conditionPercent: string;
@@ -46,6 +47,7 @@ export function InventoryDetailModal({
   const toast = useToast();
   const { hasPermission } = useAuth();
   const canManage = hasPermission(PERMISSIONS.INVENTORY_MANAGE);
+  const canChangeInvNum = hasPermission(PERMISSIONS.INVENTORY_CHANGE_INV_NUM);
   const canExport = hasPermission(PERMISSIONS.REPORTS_VIEW);
   const isConsumable = item.article.type === 'CONSUMABLE';
   const isBorrowed = item.status === 'borrowed';
@@ -54,6 +56,7 @@ export function InventoryDetailModal({
 
   const { register, handleSubmit, watch, reset } = useForm<EditForm>({
     defaultValues: {
+      inventoryNumber: item.inventoryNumber,
       status: item.status,
       serialNumber: item.serialNumber ?? '',
       conditionPercent: item.conditionPercent?.toString() ?? '',
@@ -70,6 +73,7 @@ export function InventoryDetailModal({
 
   useEffect(() => {
     reset({
+      inventoryNumber: item.inventoryNumber,
       status: item.status,
       serialNumber: item.serialNumber ?? '',
       conditionPercent: item.conditionPercent?.toString() ?? '',
@@ -84,16 +88,27 @@ export function InventoryDetailModal({
   const updateMutation = useMutation({
     mutationFn: async (values: EditForm) =>
       api.put(`/inventory/${item.id}`, {
-        // Status is managed by the loan workflow while the item is checked
-        // out; don't touch it from this form in that case.
-        status: isBorrowed ? undefined : values.status,
-        serialNumber: values.serialNumber || undefined,
-        notes: values.notes || undefined,
-        ownerOrganizationId: values.ownerOrganizationId,
-        ownerUnitId: values.ownerUnitId,
-        conditionPercent: isConsumable && values.conditionPercent ? Number(values.conditionPercent) : undefined,
-        purchasePrice: values.purchasePrice ? Number(values.purchasePrice) : undefined,
-        purchaseDate: values.purchaseDate || undefined,
+        // Each field group is only sent when the actor actually holds the
+        // permission for it - the backend enforces this independently, but
+        // omitting the field here keeps a change-inv-num-only submission
+        // from also (harmlessly, but confusingly) re-sending unchanged
+        // manage-gated fields the actor isn't allowed to touch.
+        ...(canManage
+          ? {
+              // Status is managed by the loan workflow while the item is
+              // checked out; don't touch it from this form in that case.
+              status: isBorrowed ? undefined : values.status,
+              serialNumber: values.serialNumber || undefined,
+              notes: values.notes || undefined,
+              ownerOrganizationId: values.ownerOrganizationId,
+              ownerUnitId: values.ownerUnitId,
+              conditionPercent:
+                isConsumable && values.conditionPercent ? Number(values.conditionPercent) : undefined,
+              purchasePrice: values.purchasePrice ? Number(values.purchasePrice) : undefined,
+              purchaseDate: values.purchaseDate || undefined,
+            }
+          : {}),
+        ...(canChangeInvNum ? { inventoryNumber: values.inventoryNumber || undefined } : {}),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['inventory'] });
@@ -156,6 +171,9 @@ export function InventoryDetailModal({
           onSubmit={handleSubmit((values) => updateMutation.mutate(values))}
           className="grid grid-cols-1 gap-4 sm:grid-cols-2"
         >
+          <Field label="Inventarnummer">
+            <Input {...register('inventoryNumber')} disabled={!canChangeInvNum} />
+          </Field>
           <Field label="Status">
             {isBorrowed ? (
               <>
@@ -219,17 +237,21 @@ export function InventoryDetailModal({
             </Field>
           </div>
 
-          {canManage && (
+          {(canManage || canChangeInvNum) && (
             <div className="flex justify-between gap-2 sm:col-span-2">
-              <Button
-                type="button"
-                variant="danger"
-                onClick={() => deleteMutation.mutate()}
-                loading={deleteMutation.isPending}
-              >
-                <Trash2 size={14} />
-                Ausmustern
-              </Button>
+              {canManage ? (
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => deleteMutation.mutate()}
+                  loading={deleteMutation.isPending}
+                >
+                  <Trash2 size={14} />
+                  Ausmustern
+                </Button>
+              ) : (
+                <span />
+              )}
               <Button type="submit" loading={updateMutation.isPending}>
                 Speichern
               </Button>

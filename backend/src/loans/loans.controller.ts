@@ -43,6 +43,12 @@ const CREATE_OR_ABOVE = [PERMISSIONS.LOANS_CREATE, ...MANAGE_OR_ABOVE];
 // the controller only needs to admit that tier; LoansService.assertCanEditLoan
 // enforces the actual "creator OR manage OR administer" rule per loan.
 const EDIT_OR_ABOVE = CREATE_OR_ABOVE;
+// Viewing a single loan by id follows the same pattern: a loans.create-only
+// user must be able to look up a loan they created (e.g. after a reload, or
+// via the movement-history "go to loan" link) even without loans.view - the
+// controller admits the tier, LoansService.findOne's actor check enforces
+// "creator OR view-tier-and-above" per loan.
+const VIEW_OR_CREATE = [PERMISSIONS.LOANS_CREATE, ...VIEW_OR_ABOVE];
 
 @ApiTags('loans')
 @ApiBearerAuth()
@@ -62,10 +68,13 @@ export class LoansController {
     return this.loansService.calendar(new Date(query.from), new Date(query.to));
   }
 
-  @RequireAnyPermission(...VIEW_OR_ABOVE)
+  @RequireAnyPermission(...VIEW_OR_CREATE)
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.loansService.findOne(id);
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.loansService.findOne(id, user);
   }
 
   @RequireAnyPermission(...CREATE_OR_ABOVE)

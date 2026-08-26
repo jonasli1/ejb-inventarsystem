@@ -9,6 +9,7 @@ export const PERMISSIONS = {
   ARTICLES_MANAGE: 'articles.manage',
   INVENTORY_MANAGE: 'inventory.manage',
   INVENTORY_VIEW: 'inventory.view',
+  INVENTORY_CHANGE_INV_NUM: 'inventory.change_inv_num',
   LOCATIONS_MANAGE: 'locations.manage',
   LOANS_CREATE: 'loans.create',
   LOANS_VIEW: 'loans.view',
@@ -56,9 +57,15 @@ export const ALL_PERMISSIONS: { key: PermissionKey; description: string }[] = [
   },
   {
     key: PERMISSIONS.INVENTORY_MANAGE,
-    description: 'Create, update, move inventory items',
+    description:
+      'Create, update, move inventory items (changing the inventory number itself requires inventory.change_inv_num)',
   },
   { key: PERMISSIONS.INVENTORY_VIEW, description: 'View inventory items' },
+  {
+    key: PERMISSIONS.INVENTORY_CHANGE_INV_NUM,
+    description:
+      "Change an inventory item's inventory number, independent of inventory.manage",
+  },
   {
     key: PERMISSIONS.LOCATIONS_MANAGE,
     description: 'Manage locations and rooms',
@@ -80,7 +87,7 @@ export const ALL_PERMISSIONS: { key: PermissionKey; description: string }[] = [
   {
     key: PERMISSIONS.LOANS_SPEND,
     description:
-      "Issue (hand out) and take back loan items for organizations/units the user's group(s) are scoped to, independent of loans.manage",
+      'Issue (hand out) and take back loan items for any organization, independent of loans.manage',
   },
   {
     key: PERMISSIONS.LOANS_ADMINISTER,

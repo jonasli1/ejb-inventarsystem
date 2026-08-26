@@ -16,7 +16,10 @@ import {
   CurrentUser,
   type AuthenticatedUser,
 } from '../common/decorators/current-user.decorator';
-import { RequirePermissions } from '../common/decorators/permissions.decorator';
+import {
+  RequireAnyPermission,
+  RequirePermissions,
+} from '../common/decorators/permissions.decorator';
 import { PERMISSIONS } from '../common/constants/permissions';
 import { InventoryService } from './inventory.service';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto';
@@ -57,14 +60,17 @@ export class InventoryController {
     return this.inventoryService.create(dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_MANAGE)
+  @RequireAnyPermission(
+    PERMISSIONS.INVENTORY_MANAGE,
+    PERMISSIONS.INVENTORY_CHANGE_INV_NUM,
+  )
   @Put(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateInventoryItemDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.inventoryService.update(id, dto, user.id);
+    return this.inventoryService.update(id, dto, user);
   }
 
   @RequirePermissions(PERMISSIONS.INVENTORY_MANAGE)

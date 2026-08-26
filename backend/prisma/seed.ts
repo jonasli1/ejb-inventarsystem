@@ -17,6 +17,7 @@ const ROLE_DEFINITIONS: { name: string; description: string; permissionKeys: str
     permissionKeys: [
       'inventory.manage',
       'inventory.view',
+      'inventory.change_inv_num',
       'locations.manage',
       'articles.manage',
       'loans.create',

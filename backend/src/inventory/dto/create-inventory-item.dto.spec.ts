@@ -29,10 +29,15 @@ describe('CreateInventoryItemDto', () => {
     expect(errors.some((e) => e.property === 'status')).toBe(false);
   });
 
-  it('accepts "available" (the default)', async () => {
+  it('accepts an omitted status - no class-level default, so it stays undefined on the DTO', async () => {
+    // Deliberately no default value initializer on the `status` field: a
+    // PartialType(CreateInventoryItemDto) (used by UpdateInventoryItemDto)
+    // would otherwise leak that default into every PATCH, permanently
+    // "changing" status to "available" even when the caller never sent it.
+    // InventoryService.create() applies the "available" default explicitly.
     const dto = plainToInstance(CreateInventoryItemDto, BASE);
     const errors = await validate(dto);
     expect(errors.some((e) => e.property === 'status')).toBe(false);
-    expect(dto.status).toBe('available');
+    expect(dto.status).toBeUndefined();
   });
 });

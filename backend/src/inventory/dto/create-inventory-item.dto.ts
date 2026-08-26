@@ -60,7 +60,7 @@ export class CreateInventoryItemDto {
   })
   @IsOptional()
   @IsIn(MANUALLY_ASSIGNABLE_INVENTORY_STATUSES)
-  status?: InventoryStatus = InventoryStatus.available;
+  status?: InventoryStatus;
 
   @ApiPropertyOptional()
   @IsOptional()

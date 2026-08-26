@@ -498,6 +498,60 @@ describe('LoansService', () => {
     });
   });
 
+  describe('findOne', () => {
+    const loanRow = { id: 'loan-1', lentByUserId: createUser.id };
+
+    it('returns the loan without an actor check when no actor is passed (internal call sites)', async () => {
+      prisma.loan.findFirst.mockResolvedValue(loanRow);
+      await expect(service.findOne('loan-1')).resolves.toEqual(loanRow);
+    });
+
+    it('throws NotFoundException when the loan does not exist', async () => {
+      prisma.loan.findFirst.mockResolvedValue(null);
+      await expect(service.findOne('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lets the creator view their own loan with only loans.create', async () => {
+      prisma.loan.findFirst.mockResolvedValue(loanRow);
+      await expect(service.findOne('loan-1', createUser)).resolves.toEqual(
+        loanRow,
+      );
+    });
+
+    it("rejects a loans.create-only actor viewing someone else's loan", async () => {
+      prisma.loan.findFirst.mockResolvedValue(loanRow);
+      const otherCreateUser: AuthenticatedUser = {
+        ...createUser,
+        id: 'someone-else',
+      };
+      await expect(service.findOne('loan-1', otherCreateUser)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('lets a loans.view holder view any loan', async () => {
+      prisma.loan.findFirst.mockResolvedValue(loanRow);
+      const viewUser: AuthenticatedUser = {
+        id: 'someone-else',
+        email: 'viewer@example.com',
+        displayName: 'Viewer',
+        permissions: ['loans.view'],
+      };
+      await expect(service.findOne('loan-1', viewUser)).resolves.toEqual(
+        loanRow,
+      );
+    });
+
+    it('lets manage/spend/administer holders view any loan', async () => {
+      prisma.loan.findFirst.mockResolvedValue(loanRow);
+      for (const user of [manageUser, spendUser, administerUser]) {
+        await expect(service.findOne('loan-1', user)).resolves.toEqual(loanRow);
+      }
+    });
+  });
+
   describe('status transitions', () => {
     const baseLoan = {
       id: 'loan-1',
@@ -723,14 +777,21 @@ describe('LoansService', () => {
         );
       });
 
-      it('rejects loans.spend outside scope', async () => {
+      it('allows loans.spend to issue items outside their group scope - issuing is unscoped', async () => {
         const approvedLoan = { ...baseLoan, status: 'approved' };
-        prisma.loan.findFirst.mockResolvedValue(approvedLoan);
+        prisma.loan.findFirst
+          .mockResolvedValueOnce(approvedLoan)
+          .mockResolvedValueOnce({ ...approvedLoan, status: 'issued' });
         groups.getLoanScopeForUser.mockResolvedValue([
           { organizationId: 'org-other', organizationUnitId: null },
         ]);
-        await expect(service.issue('loan-1', {}, spendUser)).rejects.toThrow(
-          ForbiddenException,
+
+        await service.issue('loan-1', {}, spendUser);
+
+        expect(prisma.tx.loan.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ status: 'issued' }),
+          }),
         );
       });
 
@@ -811,21 +872,29 @@ describe('LoansService', () => {
         ).rejects.toThrow(ForbiddenException);
       });
 
-      it('rejects loans.spend outside the scope of the returned item', async () => {
-        prisma.loan.findFirst.mockResolvedValue({
-          ...baseLoan,
-          status: 'issued',
-        });
+      it('allows loans.spend to return items outside their group scope - returning is unscoped', async () => {
+        const issuedLoan = { ...baseLoan, status: 'issued' };
+        prisma.loan.findFirst
+          .mockResolvedValueOnce(issuedLoan)
+          .mockResolvedValueOnce({ ...issuedLoan, status: 'completed' });
+        prisma.tx.loanItem.findMany.mockResolvedValueOnce([
+          { returnedAt: new Date() },
+        ]);
         groups.getLoanScopeForUser.mockResolvedValue([
           { organizationId: 'org-other', organizationUnitId: null },
         ]);
-        await expect(
-          service.returnLoan(
-            'loan-1',
-            { items: [{ loanItemId: 'li-1' }] },
-            spendUser,
-          ),
-        ).rejects.toThrow(ForbiddenException);
+
+        await service.returnLoan(
+          'loan-1',
+          { items: [{ loanItemId: 'li-1' }] },
+          spendUser,
+        );
+
+        expect(prisma.tx.loan.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ status: 'completed' }),
+          }),
+        );
       });
 
       it('allows loans.spend within scope to return', async () => {

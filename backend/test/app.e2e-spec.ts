@@ -1946,7 +1946,8 @@ describe('Inventarsystem API (e2e)', () => {
         .send({})
         .expect(403);
 
-      // A loans.spend holder from a different org's scope can't either.
+      // Same for a loans.manage holder scoped to a different org - manage
+      // never covers issuing, regardless of scope.
       await request(app.getHttpServer())
         .post(`/api/v1/loans/${loanId}/issue`)
         .set('Authorization', `Bearer ${managerBToken}`)
@@ -2088,6 +2089,26 @@ describe('Inventarsystem API (e2e)', () => {
           (i: { approvedAt: string | null }) => i.approvedAt !== null,
         ),
       ).toBe(true);
+
+      // Issuing/returning is unscoped: spenderA (scoped only to org A) may
+      // issue and return this loan even though it also contains an org B item.
+      const issued = await request(app.getHttpServer())
+        .post(`/api/v1/loans/${loanId}/issue`)
+        .set('Authorization', `Bearer ${spenderAToken}`)
+        .send({})
+        .expect(201);
+      expect(issued.body.status).toBe('issued');
+
+      const returned = await request(app.getHttpServer())
+        .post(`/api/v1/loans/${loanId}/return`)
+        .set('Authorization', `Bearer ${spenderAToken}`)
+        .send({
+          items: issued.body.items.map((li: { id: string }) => ({
+            loanItemId: li.id,
+          })),
+        })
+        .expect(201);
+      expect(returned.body.status).toBe('completed');
     });
 
     it('lets loans.administer create a pre-approved loan for any organization, with forceRequested honored', async () => {
@@ -2239,6 +2260,12 @@ describe('Inventarsystem API (e2e)', () => {
         .expect(201);
       const loanId = created.body.id;
 
+      // Creator (bare loans.create, no loans.view) may look up their own loan.
+      await request(app.getHttpServer())
+        .get(`/api/v1/loans/${loanId}`)
+        .set('Authorization', `Bearer ${requesterToken}`)
+        .expect(200);
+
       // Creator (bare loans.create) may edit their own loan.
       await request(app.getHttpServer())
         .put(`/api/v1/loans/${loanId}`)
@@ -2283,6 +2310,12 @@ describe('Inventarsystem API (e2e)', () => {
         .put(`/api/v1/loans/${loanId}`)
         .set('Authorization', `Bearer ${otherRequesterLogin.body.accessToken}`)
         .send({ notes: 'Sollte fehlschlagen' })
+        .expect(403);
+
+      // ...and may not even look it up (bare loans.create, not the creator, no loans.view).
+      await request(app.getHttpServer())
+        .get(`/api/v1/loans/${loanId}`)
+        .set('Authorization', `Bearer ${otherRequesterLogin.body.accessToken}`)
         .expect(403);
 
       // loans.manage may edit it too, even though managerB is scoped to a
@@ -3563,6 +3596,216 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(photos.body).toHaveLength(1);
+    });
+  });
+
+  describe('inventory.change_inv_num permission', () => {
+    let adminSessionToken: string;
+    let itemId: string;
+    let manageOnlyToken: string;
+    let changeInvNumOnlyToken: string;
+
+    beforeAll(async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+      adminSessionToken = login.body.accessToken;
+
+      const orgId = (
+        await request(app.getHttpServer())
+          .post('/api/v1/organizations')
+          .set('Authorization', `Bearer ${adminSessionToken}`)
+          .send({ name: 'InvNum Org' })
+          .expect(201)
+      ).body.id;
+      const unitId = (
+        await request(app.getHttpServer())
+          .post(`/api/v1/organizations/${orgId}/units`)
+          .set('Authorization', `Bearer ${adminSessionToken}`)
+          .send({ name: 'InvNum Unit' })
+          .expect(201)
+      ).body.id;
+      const locationId = (
+        await request(app.getHttpServer())
+          .post('/api/v1/locations')
+          .set('Authorization', `Bearer ${adminSessionToken}`)
+          .send({ name: 'InvNum Location' })
+          .expect(201)
+      ).body.id;
+      const roomId = (
+        await request(app.getHttpServer())
+          .post('/api/v1/rooms')
+          .set('Authorization', `Bearer ${adminSessionToken}`)
+          .send({ name: 'InvNum Room', locationId })
+          .expect(201)
+      ).body.id;
+      const articleId = (
+        await request(app.getHttpServer())
+          .post('/api/v1/articles')
+          .set('Authorization', `Bearer ${adminSessionToken}`)
+          .send({ name: 'InvNum Article', type: 'UNIQUE' })
+          .expect(201)
+      ).body.id;
+      itemId = (
+        await request(app.getHttpServer())
+          .post('/api/v1/inventory')
+          .set('Authorization', `Bearer ${adminSessionToken}`)
+          .send({
+            articleId,
+            locationId,
+            roomId,
+            ownerOrganizationId: orgId,
+            ownerUnitId: unitId,
+            inventoryNumber: 'INVNUM-ORIGINAL',
+          })
+          .expect(201)
+      ).body.id;
+
+      const permissions = (
+        await request(app.getHttpServer())
+          .get('/api/v1/permissions')
+          .set('Authorization', `Bearer ${adminSessionToken}`)
+          .expect(200)
+      ).body;
+      const permId = (key: string) =>
+        (permissions as { key: string; id: string }[]).find(
+          (p) => p.key === key,
+        )!.id;
+
+      const manageOnlyRole = (
+        await request(app.getHttpServer())
+          .post('/api/v1/roles')
+          .set('Authorization', `Bearer ${adminSessionToken}`)
+          .send({ name: 'InvNum Manage Only' })
+          .expect(201)
+      ).body;
+      await request(app.getHttpServer())
+        .post(`/api/v1/roles/${manageOnlyRole.id}/permissions`)
+        .set('Authorization', `Bearer ${adminSessionToken}`)
+        .send({ permissionId: permId('inventory.manage') })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/roles/${manageOnlyRole.id}/permissions`)
+        .set('Authorization', `Bearer ${adminSessionToken}`)
+        .send({ permissionId: permId('inventory.view') })
+        .expect(201);
+
+      const changeInvNumOnlyRole = (
+        await request(app.getHttpServer())
+          .post('/api/v1/roles')
+          .set('Authorization', `Bearer ${adminSessionToken}`)
+          .send({ name: 'InvNum Change Only' })
+          .expect(201)
+      ).body;
+      await request(app.getHttpServer())
+        .post(`/api/v1/roles/${changeInvNumOnlyRole.id}/permissions`)
+        .set('Authorization', `Bearer ${adminSessionToken}`)
+        .send({ permissionId: permId('inventory.change_inv_num') })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/roles/${changeInvNumOnlyRole.id}/permissions`)
+        .set('Authorization', `Bearer ${adminSessionToken}`)
+        .send({ permissionId: permId('inventory.view') })
+        .expect(201);
+
+      async function createUserWithRole(
+        email: string,
+        roleId: string,
+      ): Promise<string> {
+        const user = (
+          await request(app.getHttpServer())
+            .post('/api/v1/users')
+            .set('Authorization', `Bearer ${adminSessionToken}`)
+            .send({ email, displayName: email, password: 'InvNumPass123!' })
+            .expect(201)
+        ).body;
+        await request(app.getHttpServer())
+          .post(`/api/v1/users/${user.id}/roles`)
+          .set('Authorization', `Bearer ${adminSessionToken}`)
+          .send({ roleId })
+          .expect(201);
+        const userLogin = await request(app.getHttpServer())
+          .post('/api/v1/auth/login')
+          .send({ email, password: 'InvNumPass123!' })
+          .expect(201);
+        return userLogin.body.accessToken as string;
+      }
+
+      manageOnlyToken = await createUserWithRole(
+        'invnum-manage-only@example.com',
+        manageOnlyRole.id,
+      );
+      changeInvNumOnlyToken = await createUserWithRole(
+        'invnum-change-only@example.com',
+        changeInvNumOnlyRole.id,
+      );
+    });
+
+    it('lets inventory.manage change other fields but not the inventory number', async () => {
+      await request(app.getHttpServer())
+        .put(`/api/v1/inventory/${itemId}`)
+        .set('Authorization', `Bearer ${manageOnlyToken}`)
+        .send({ inventoryNumber: 'SHOULD-FAIL' })
+        .expect(403);
+
+      const updated = await request(app.getHttpServer())
+        .put(`/api/v1/inventory/${itemId}`)
+        .set('Authorization', `Bearer ${manageOnlyToken}`)
+        .send({ notes: 'Von Manage bearbeitet' })
+        .expect(200);
+      expect(updated.body.notes).toBe('Von Manage bearbeitet');
+      expect(updated.body.inventoryNumber).toBe('INVNUM-ORIGINAL');
+    });
+
+    it('lets inventory.change_inv_num change the inventory number but not other fields', async () => {
+      await request(app.getHttpServer())
+        .put(`/api/v1/inventory/${itemId}`)
+        .set('Authorization', `Bearer ${changeInvNumOnlyToken}`)
+        .send({ notes: 'Sollte fehlschlagen' })
+        .expect(403);
+
+      const updated = await request(app.getHttpServer())
+        .put(`/api/v1/inventory/${itemId}`)
+        .set('Authorization', `Bearer ${changeInvNumOnlyToken}`)
+        .send({ inventoryNumber: 'INVNUM-RENAMED' })
+        .expect(200);
+      expect(updated.body.inventoryNumber).toBe('INVNUM-RENAMED');
+    });
+
+    it('rejects renaming to an inventory number already in use', async () => {
+      const other = (
+        await request(app.getHttpServer())
+          .get(`/api/v1/inventory/${itemId}`)
+          .set('Authorization', `Bearer ${adminSessionToken}`)
+          .expect(200)
+      ).body;
+      const otherArticle = (
+        await request(app.getHttpServer())
+          .post('/api/v1/articles')
+          .set('Authorization', `Bearer ${adminSessionToken}`)
+          .send({ name: 'InvNum Conflict Article', type: 'UNIQUE' })
+          .expect(201)
+      ).body;
+      const conflicting = (
+        await request(app.getHttpServer())
+          .post('/api/v1/inventory')
+          .set('Authorization', `Bearer ${adminSessionToken}`)
+          .send({
+            articleId: otherArticle.id,
+            locationId: other.locationId,
+            roomId: other.roomId,
+            ownerOrganizationId: other.ownerOrganizationId,
+            ownerUnitId: other.ownerUnitId,
+          })
+          .expect(201)
+      ).body;
+
+      await request(app.getHttpServer())
+        .put(`/api/v1/inventory/${conflicting.id}`)
+        .set('Authorization', `Bearer ${changeInvNumOnlyToken}`)
+        .send({ inventoryNumber: other.inventoryNumber })
+        .expect(409);
     });
   });
 
