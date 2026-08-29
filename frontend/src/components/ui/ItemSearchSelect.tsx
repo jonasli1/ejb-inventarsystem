@@ -90,6 +90,7 @@ export function ItemSearchSelect({
     <div className="relative flex-1">
       <Input
         placeholder={placeholder}
+        autoComplete="off"
         value={search}
         onChange={(e) => {
           setSearch(e.target.value);

@@ -77,6 +77,7 @@ export function LoanEditModal({
           mutation.mutate();
         }}
         className="flex flex-col gap-4"
+        autoComplete="off"
       >
         <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
           {loan.status === 'issued'
@@ -86,7 +87,7 @@ export function LoanEditModal({
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Field label="Ausleiher (Name)">
-            <Input value={borrowerName} onChange={(e) => setBorrowerName(e.target.value)} />
+            <Input value={borrowerName} onChange={(e) => setBorrowerName(e.target.value)} autoComplete="off" />
           </Field>
           <Field label="Geplantes Ausgabedatum">
             <Input type="date" value={checkoutDate} onChange={(e) => setCheckoutDate(e.target.value)} required />
@@ -98,10 +99,20 @@ export function LoanEditModal({
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Straße, Hausnummer">
-            <Input value={borrowerStreet} onChange={(e) => setBorrowerStreet(e.target.value)} required />
+            <Input
+              value={borrowerStreet}
+              onChange={(e) => setBorrowerStreet(e.target.value)}
+              required
+              autoComplete="off"
+            />
           </Field>
           <Field label="PLZ, Ort">
-            <Input value={borrowerCity} onChange={(e) => setBorrowerCity(e.target.value)} required />
+            <Input
+              value={borrowerCity}
+              onChange={(e) => setBorrowerCity(e.target.value)}
+              required
+              autoComplete="off"
+            />
           </Field>
           <Field label="E-Mail">
             <Input
@@ -109,10 +120,16 @@ export function LoanEditModal({
               value={borrowerEmail}
               onChange={(e) => setBorrowerEmail(e.target.value)}
               required
+              autoComplete="off"
             />
           </Field>
           <Field label="Handynummer">
-            <Input value={borrowerPhone} onChange={(e) => setBorrowerPhone(e.target.value)} required />
+            <Input
+              value={borrowerPhone}
+              onChange={(e) => setBorrowerPhone(e.target.value)}
+              required
+              autoComplete="off"
+            />
           </Field>
         </div>
 

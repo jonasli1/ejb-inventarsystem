@@ -172,6 +172,7 @@ export function LoanCreateModal({
           mutation.mutate();
         }}
         className="flex flex-col gap-4"
+        autoComplete="off"
       >
         {canAdminister && templatesQuery.data && templatesQuery.data.length > 0 && (
           <Field label="Aus Vorlage erstellen">
@@ -200,6 +201,7 @@ export function LoanCreateModal({
               value={borrowerName}
               onChange={(e) => setBorrowerName(e.target.value)}
               placeholder="Max Mustermann"
+              autoComplete="off"
             />
           </Field>
           <Field label="Geplantes Ausgabedatum">
@@ -217,10 +219,20 @@ export function LoanCreateModal({
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Straße, Hausnummer">
-            <Input value={borrowerStreet} onChange={(e) => setBorrowerStreet(e.target.value)} required />
+            <Input
+              value={borrowerStreet}
+              onChange={(e) => setBorrowerStreet(e.target.value)}
+              required
+              autoComplete="off"
+            />
           </Field>
           <Field label="PLZ, Ort">
-            <Input value={borrowerCity} onChange={(e) => setBorrowerCity(e.target.value)} required />
+            <Input
+              value={borrowerCity}
+              onChange={(e) => setBorrowerCity(e.target.value)}
+              required
+              autoComplete="off"
+            />
           </Field>
           <Field label="E-Mail">
             <Input
@@ -228,10 +240,16 @@ export function LoanCreateModal({
               value={borrowerEmail}
               onChange={(e) => setBorrowerEmail(e.target.value)}
               required
+              autoComplete="off"
             />
           </Field>
           <Field label="Handynummer">
-            <Input value={borrowerPhone} onChange={(e) => setBorrowerPhone(e.target.value)} required />
+            <Input
+              value={borrowerPhone}
+              onChange={(e) => setBorrowerPhone(e.target.value)}
+              required
+              autoComplete="off"
+            />
           </Field>
         </div>
 

@@ -204,6 +204,7 @@ export function InventoryPage() {
             <Input
               className="pl-9"
               placeholder="Suche nach Name, Inventarnummer, Hersteller, Kategorie, Eigentümer, Standort …"
+              autoComplete="off"
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
