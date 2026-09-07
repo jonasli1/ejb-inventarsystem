@@ -3,16 +3,23 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
-  IsEnum,
-  IsInt,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
-  Max,
-  Min,
   ValidateNested,
 } from 'class-validator';
 import { InventoryStatus } from '@prisma/client';
+
+// A returned item can only land in one of these states - never back into
+// "installed" (that's not a loan-return outcome) and never "borrowed"
+// (that would just be a bug), keeping the status graph consistent.
+const RETURNABLE_TARGET_STATUSES = [
+  InventoryStatus.available,
+  InventoryStatus.maintenance,
+  InventoryStatus.defect,
+  InventoryStatus.retired,
+] as const;
 
 export class ReturnLoanItemDto {
   @ApiProperty()
@@ -20,25 +27,13 @@ export class ReturnLoanItemDto {
   loanItemId: string;
 
   @ApiPropertyOptional({
-    minimum: 1,
-    maximum: 100,
-    description:
-      'Updated condition percentage, only relevant for CONSUMABLE articles.',
-  })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  returnedCondition?: number;
-
-  @ApiPropertyOptional({
-    enum: InventoryStatus,
+    enum: RETURNABLE_TARGET_STATUSES,
     default: InventoryStatus.available,
     description:
       'Status to set the inventory item to after return, e.g. "defect" for damaged items.',
   })
   @IsOptional()
-  @IsEnum(InventoryStatus)
+  @IsIn(RETURNABLE_TARGET_STATUSES)
   newStatus?: InventoryStatus = InventoryStatus.available;
 }
 

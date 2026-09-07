@@ -1,24 +1,22 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import {
-  ArticleType,
-  InventoryStatus,
-  Prisma,
-  StockMovementType,
-} from '@prisma/client';
-import * as crypto from 'node:crypto';
+import { Injectable } from '@nestjs/common';
+import { InventoryStatus, Prisma, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AttachmentsService } from '../attachments/attachments.service';
 import { paginate } from '../common/dto/pagination-query.dto';
 import { PERMISSIONS } from '../common/constants/permissions';
+import {
+  AppBadRequestException,
+  AppConflictException,
+  AppForbiddenException,
+  AppNotFoundException,
+} from '../common/exceptions/app.exception';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto';
 import { UpdateInventoryItemDto } from './dto/update-inventory-item.dto';
 import { MoveInventoryItemDto } from './dto/move-inventory-item.dto';
 import { QueryInventoryItemDto } from './dto/query-inventory-item.dto';
+import { AccessoryCandidatesQueryDto } from './dto/accessory-candidates-query.dto';
+import { assertValidStatusTransition } from './inventory-status';
 
 // Fields UpdateInventoryItemDto carries besides inventoryNumber - gated by
 // inventory.manage. Kept as an explicit list (rather than inferred from the
@@ -30,10 +28,10 @@ const MANAGE_GATED_UPDATE_KEYS = [
   'ownerUnitId',
   'status',
   'serialNumber',
-  'conditionPercent',
   'notes',
   'purchasePrice',
   'purchaseDate',
+  'nextDguvV3Check',
 ] as const satisfies readonly (keyof UpdateInventoryItemDto)[];
 
 const INVENTORY_ITEM_INCLUDE = {
@@ -42,11 +40,21 @@ const INVENTORY_ITEM_INCLUDE = {
   room: true,
   ownerOrganization: true,
   ownerUnit: true,
+  parentItem: {
+    select: {
+      id: true,
+      inventoryNumber: true,
+      article: { select: { id: true, name: true } },
+    },
+  },
 } satisfies Prisma.InventoryItemInclude;
 
 @Injectable()
 export class InventoryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly attachments: AttachmentsService,
+  ) {}
 
   async findAll(query: QueryInventoryItemDto) {
     const page = query.page ?? 1;
@@ -65,46 +73,7 @@ export class InventoryService {
         ? { ownerOrganizationId: query.ownerOrganizationId }
         : {}),
       ...(query.ownerUnitId ? { ownerUnitId: query.ownerUnitId } : {}),
-      ...(query.search
-        ? {
-            OR: [
-              {
-                inventoryNumber: {
-                  contains: query.search,
-                  mode: 'insensitive',
-                },
-              },
-              { serialNumber: { contains: query.search, mode: 'insensitive' } },
-              {
-                article: {
-                  name: { contains: query.search, mode: 'insensitive' },
-                },
-              },
-              {
-                article: {
-                  manufacturer: { contains: query.search, mode: 'insensitive' },
-                },
-              },
-              {
-                article: {
-                  category: {
-                    name: { contains: query.search, mode: 'insensitive' },
-                  },
-                },
-              },
-              {
-                ownerOrganization: {
-                  name: { contains: query.search, mode: 'insensitive' },
-                },
-              },
-              {
-                location: {
-                  name: { contains: query.search, mode: 'insensitive' },
-                },
-              },
-            ],
-          }
-        : {}),
+      ...(query.search ? await this.buildSearchWhere(query.search) : {}),
     };
 
     if (query.grouped) {
@@ -125,6 +94,49 @@ export class InventoryService {
     ]);
 
     return paginate(data, total, page, pageSize);
+  }
+
+  /**
+   * Case-insensitive search across the fields relevant to picking an
+   * inventory item: its own number/serial, its article's name/manufacturer/
+   * category/aliases, and its location context. Reused by the accessory
+   * candidate picker. Alias matching needs a raw query since Prisma has no
+   * "substring inside any array element" filter.
+   */
+  private async buildSearchWhere(
+    search: string,
+  ): Promise<Prisma.InventoryItemWhereInput> {
+    const aliasMatches = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT a.id FROM articles a
+      WHERE EXISTS (
+        SELECT 1 FROM unnest(a.aliases) AS alias WHERE alias ILIKE ${'%' + search + '%'}
+      )
+    `;
+
+    const OR: Prisma.InventoryItemWhereInput[] = [
+      { inventoryNumber: { contains: search, mode: 'insensitive' } },
+      { serialNumber: { contains: search, mode: 'insensitive' } },
+      { article: { name: { contains: search, mode: 'insensitive' } } },
+      {
+        article: { manufacturer: { contains: search, mode: 'insensitive' } },
+      },
+      {
+        article: {
+          category: { name: { contains: search, mode: 'insensitive' } },
+        },
+      },
+      {
+        ownerOrganization: { name: { contains: search, mode: 'insensitive' } },
+      },
+      { location: { name: { contains: search, mode: 'insensitive' } } },
+      { notes: { contains: search, mode: 'insensitive' } },
+    ];
+
+    if (aliasMatches.length) {
+      OR.push({ articleId: { in: aliasMatches.map((m) => m.id) } });
+    }
+
+    return { OR };
   }
 
   private async findAllGrouped(
@@ -175,34 +187,62 @@ export class InventoryService {
       where: { id, deletedAt: null },
       include: INVENTORY_ITEM_INCLUDE,
     });
-    if (!item) throw new NotFoundException('Inventory item not found.');
+    if (!item) throw new AppNotFoundException('Inventarobjekt nicht gefunden.');
     return item;
+  }
+
+  /**
+   * Detail view enriched with data inherited (read-only) from the article:
+   * its notes and document attachments, each tagged with `origin: 'article'`
+   * so the frontend can display them on the object while making clear they
+   * live on the article, plus this item's own accessories.
+   */
+  async findOneWithInherited(id: string) {
+    const item = await this.findOne(id);
+    const articleDocuments = await this.attachments.list(
+      'article',
+      item.articleId,
+      'document',
+    );
+    const accessories = await this.prisma.inventoryItem.findMany({
+      where: { parentItemId: id, deletedAt: null },
+      include: INVENTORY_ITEM_INCLUDE,
+    });
+
+    return {
+      ...item,
+      article: {
+        ...item.article,
+        documents: articleDocuments.map((d) => ({
+          ...d,
+          origin: 'article' as const,
+        })),
+      },
+      accessories,
+    };
   }
 
   async create(dto: CreateInventoryItemDto, userId?: string) {
     const article = await this.prisma.article.findFirst({
       where: { id: dto.articleId, deletedAt: null },
     });
-    if (!article) throw new NotFoundException('Article not found.');
+    if (!article) throw new AppNotFoundException('Artikel nicht gefunden.');
 
-    this.assertConditionPercentAllowed(article.type, dto.conditionPercent);
+    await this.assertInventoryNumberAvailable(dto.inventoryNumber);
     await this.assertRoomBelongsToLocation(dto.roomId, dto.locationId);
     await this.assertUnitBelongsToOrganization(
       dto.ownerUnitId,
       dto.ownerOrganizationId,
     );
 
-    const inventoryNumber =
-      dto.inventoryNumber ?? this.generateInventoryNumber();
-
     const item = await this.prisma.inventoryItem.create({
       data: {
         ...dto,
-        inventoryNumber,
         status: dto.status ?? InventoryStatus.available,
-        purchaseDate: dto.purchaseDate
-          ? new Date(dto.purchaseDate)
-          : new Date(),
+        purchaseDate: dto.purchaseDate ? new Date(dto.purchaseDate) : null,
+        nextDguvV3Check: dto.nextDguvV3Check
+          ? new Date(dto.nextDguvV3Check)
+          : null,
       },
       include: INVENTORY_ITEM_INCLUDE,
     });
@@ -213,9 +253,8 @@ export class InventoryService {
         type: StockMovementType.in,
         toRoomId: item.roomId,
         newStatus: item.status,
-        newCondition: item.conditionPercent,
         userId,
-        note: 'Initial stock intake',
+        note: 'Zugang (Ersterfassung)',
       },
     });
 
@@ -234,30 +273,24 @@ export class InventoryService {
       dto.inventoryNumber !== undefined &&
       !user.permissions.includes(PERMISSIONS.INVENTORY_CHANGE_INV_NUM)
     ) {
-      throw new ForbiddenException(
-        'You do not have permission to change the inventory number.',
+      throw new AppForbiddenException(
+        'Sie haben keine Berechtigung, die Inventarnummer zu ändern.',
+        'MISSING_PERMISSION',
       );
     }
     if (
       MANAGE_GATED_UPDATE_KEYS.some((key) => dto[key] !== undefined) &&
       !user.permissions.includes(PERMISSIONS.INVENTORY_MANAGE)
     ) {
-      throw new ForbiddenException(
-        'You do not have permission to manage inventory items.',
+      throw new AppForbiddenException(
+        'Sie haben keine Berechtigung, Inventarobjekte zu bearbeiten.',
+        'MISSING_PERMISSION',
       );
     }
 
-    const articleType = dto.articleId
-      ? (
-          await this.prisma.article.findFirstOrThrow({
-            where: { id: dto.articleId },
-          })
-        ).type
-      : existing.article.type;
-    this.assertConditionPercentAllowed(
-      articleType,
-      dto.conditionPercent ?? existing.conditionPercent ?? undefined,
-    );
+    if (dto.inventoryNumber !== undefined) {
+      await this.assertInventoryNumberAvailable(dto.inventoryNumber, id);
+    }
 
     if (dto.ownerUnitId || dto.ownerOrganizationId) {
       await this.assertUnitBelongsToOrganization(
@@ -268,23 +301,12 @@ export class InventoryService {
 
     const movements: Prisma.StockMovementCreateManyInput[] = [];
     if (dto.status && dto.status !== existing.status) {
+      assertValidStatusTransition(existing.status, dto.status);
       movements.push({
         inventoryItemId: id,
         type: StockMovementType.status_change,
         oldStatus: existing.status,
         newStatus: dto.status,
-        userId,
-      });
-    }
-    if (
-      dto.conditionPercent !== undefined &&
-      dto.conditionPercent !== existing.conditionPercent
-    ) {
-      movements.push({
-        inventoryItemId: id,
-        type: StockMovementType.condition_change,
-        oldCondition: existing.conditionPercent,
-        newCondition: dto.conditionPercent,
         userId,
       });
     }
@@ -294,9 +316,18 @@ export class InventoryService {
         where: { id },
         data: {
           ...dto,
-          purchaseDate: dto.purchaseDate
-            ? new Date(dto.purchaseDate)
-            : undefined,
+          purchaseDate:
+            dto.purchaseDate !== undefined
+              ? dto.purchaseDate
+                ? new Date(dto.purchaseDate)
+                : null
+              : undefined,
+          nextDguvV3Check:
+            dto.nextDguvV3Check !== undefined
+              ? dto.nextDguvV3Check
+                ? new Date(dto.nextDguvV3Check)
+                : null
+              : undefined,
         },
         include: INVENTORY_ITEM_INCLUDE,
       }),
@@ -308,10 +339,21 @@ export class InventoryService {
 
   async remove(id: string, userId?: string) {
     const existing = await this.findOne(id);
+    if (existing.status === InventoryStatus.borrowed) {
+      throw new AppBadRequestException(
+        'Ein ausgeliehenes Inventarobjekt kann nicht ausgemustert werden, solange es nicht über die Ausleihe zurückgegeben wurde.',
+        'ITEM_CURRENTLY_BORROWED',
+      );
+    }
     await this.prisma.$transaction([
       this.prisma.inventoryItem.update({
         where: { id },
-        data: { deletedAt: new Date(), status: 'retired' },
+        data: { deletedAt: new Date(), status: 'retired', parentItemId: null },
+      }),
+      // Retiring a parent releases its accessories rather than deleting them.
+      this.prisma.inventoryItem.updateMany({
+        where: { parentItemId: id },
+        data: { parentItemId: null },
       }),
       this.prisma.stockMovement.create({
         data: {
@@ -345,10 +387,13 @@ export class InventoryService {
     const toRoom = await this.prisma.room.findFirst({
       where: { id: dto.toRoomId, deletedAt: null },
     });
-    if (!toRoom) throw new NotFoundException('Target room not found.');
+    if (!toRoom) throw new AppNotFoundException('Zielraum nicht gefunden.');
 
     if (toRoom.id === item.roomId) {
-      throw new BadRequestException('Item is already in the target room.');
+      throw new AppBadRequestException(
+        'Das Objekt befindet sich bereits in diesem Raum.',
+        'ALREADY_IN_TARGET_ROOM',
+      );
     }
 
     const [updated] = await this.prisma.$transaction([
@@ -372,17 +417,164 @@ export class InventoryService {
     return updated;
   }
 
-  private assertConditionPercentAllowed(
-    type: ArticleType,
-    conditionPercent?: number | null,
+  // -------------------------------------------------------------------------
+  // Accessories (self-relation, depth 1, no cycles)
+  // -------------------------------------------------------------------------
+
+  async getAccessoryCandidates(
+    itemId: string,
+    query: AccessoryCandidatesQueryDto,
   ) {
-    if (
-      conditionPercent !== undefined &&
-      conditionPercent !== null &&
-      type !== ArticleType.CONSUMABLE
-    ) {
-      throw new BadRequestException(
-        'conditionPercent is only allowed for CONSUMABLE articles.',
+    const item = await this.prisma.inventoryItem.findFirst({
+      where: { id: itemId, deletedAt: null },
+      select: { id: true, parentItemId: true },
+    });
+    if (!item) throw new AppNotFoundException('Inventarobjekt nicht gefunden.');
+
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+
+    const where: Prisma.InventoryItemWhereInput = {
+      deletedAt: null,
+      id: { not: itemId },
+      ...(query.search ? await this.buildSearchWhere(query.search) : {}),
+    };
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.inventoryItem.findMany({
+        where,
+        include: {
+          ...INVENTORY_ITEM_INCLUDE,
+          accessories: { where: { deletedAt: null }, select: { id: true } },
+        },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        orderBy: { inventoryNumber: 'asc' },
+      }),
+      this.prisma.inventoryItem.count({ where }),
+    ]);
+
+    const parentIsItselfAccessory = item.parentItemId !== null;
+    const candidates = data.map((candidate) => ({
+      ...candidate,
+      ...this.evaluateAccessoryEligibility(candidate, parentIsItselfAccessory),
+    }));
+
+    return paginate(candidates, total, page, pageSize);
+  }
+
+  private evaluateAccessoryEligibility(
+    candidate: {
+      parentItemId: string | null;
+      status: InventoryStatus;
+      accessories: { id: string }[];
+    },
+    parentIsItselfAccessory: boolean,
+  ): { eligible: boolean; reason?: string } {
+    if (parentIsItselfAccessory) {
+      return {
+        eligible: false,
+        reason:
+          'Dieses Objekt ist selbst Zubehör und kann daher kein weiteres Zubehör erhalten.',
+      };
+    }
+    if (candidate.parentItemId) {
+      return {
+        eligible: false,
+        reason: 'Dieses Objekt ist bereits Zubehör eines anderen Objekts.',
+      };
+    }
+    if (candidate.accessories.length > 0) {
+      return {
+        eligible: false,
+        reason:
+          'Dieses Objekt hat selbst Zubehör und kann daher nicht selbst Zubehör werden.',
+      };
+    }
+    if (candidate.status === InventoryStatus.retired) {
+      return { eligible: false, reason: 'Dieses Objekt ist ausgemustert.' };
+    }
+    return { eligible: true };
+  }
+
+  async assignAccessory(itemId: string, accessoryItemId: string) {
+    if (itemId === accessoryItemId) {
+      throw new AppBadRequestException(
+        'Ein Objekt kann nicht sein eigenes Zubehör sein.',
+        'ACCESSORY_SELF_REFERENCE',
+      );
+    }
+
+    const parent = await this.prisma.inventoryItem.findFirst({
+      where: { id: itemId, deletedAt: null },
+      select: { id: true, parentItemId: true },
+    });
+    if (!parent) throw new AppNotFoundException('Inventarobjekt nicht gefunden.');
+
+    const candidate = await this.prisma.inventoryItem.findFirst({
+      where: { id: accessoryItemId, deletedAt: null },
+      include: { accessories: { where: { deletedAt: null }, select: { id: true } } },
+    });
+    if (!candidate) {
+      throw new AppNotFoundException(
+        'Das ausgewählte Zubehör-Objekt wurde nicht gefunden.',
+      );
+    }
+
+    const eligibility = this.evaluateAccessoryEligibility(
+      candidate,
+      parent.parentItemId !== null,
+    );
+    if (!eligibility.eligible) {
+      throw new AppBadRequestException(
+        eligibility.reason!,
+        'ACCESSORY_NOT_ELIGIBLE',
+      );
+    }
+
+    return this.prisma.inventoryItem.update({
+      where: { id: accessoryItemId },
+      data: { parentItemId: itemId },
+      include: INVENTORY_ITEM_INCLUDE,
+    });
+  }
+
+  async removeAccessory(itemId: string, accessoryItemId: string) {
+    const candidate = await this.prisma.inventoryItem.findFirst({
+      where: { id: accessoryItemId, deletedAt: null, parentItemId: itemId },
+    });
+    if (!candidate) {
+      throw new AppNotFoundException(
+        'Dieses Objekt ist kein Zubehör des angegebenen Inventarobjekts.',
+      );
+    }
+    return this.prisma.inventoryItem.update({
+      where: { id: accessoryItemId },
+      data: { parentItemId: null },
+      include: INVENTORY_ITEM_INCLUDE,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+
+  private async assertInventoryNumberAvailable(
+    inventoryNumber: string | undefined,
+    excludeId?: string,
+  ) {
+    if (!inventoryNumber) return;
+    const conflict = await this.prisma.inventoryItem.findFirst({
+      where: {
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+        deletedAt: null,
+        status: { not: InventoryStatus.retired },
+        inventoryNumber: { equals: inventoryNumber, mode: 'insensitive' },
+      },
+      select: { id: true },
+    });
+    if (conflict) {
+      throw new AppConflictException(
+        `Die Inventarnummer "${inventoryNumber}" wird bereits von einem aktiven Inventarobjekt verwendet.`,
+        'DUPLICATE_INVENTORY_NUMBER',
       );
     }
   }
@@ -394,10 +586,11 @@ export class InventoryService {
     const room = await this.prisma.room.findFirst({
       where: { id: roomId, deletedAt: null },
     });
-    if (!room) throw new NotFoundException('Room not found.');
+    if (!room) throw new AppNotFoundException('Raum nicht gefunden.');
     if (room.locationId !== locationId) {
-      throw new BadRequestException(
-        'The selected room does not belong to the selected location.',
+      throw new AppBadRequestException(
+        'Der ausgewählte Raum gehört nicht zum ausgewählten Standort.',
+        'ROOM_LOCATION_MISMATCH',
       );
     }
   }
@@ -409,17 +602,13 @@ export class InventoryService {
     const unit = await this.prisma.organizationUnit.findFirst({
       where: { id: unitId, deletedAt: null },
     });
-    if (!unit) throw new NotFoundException('Organization unit not found.');
+    if (!unit)
+      throw new AppNotFoundException('Organisationsbereich nicht gefunden.');
     if (unit.organizationId !== organizationId) {
-      throw new BadRequestException(
-        'The selected organization unit does not belong to the selected organization.',
+      throw new AppBadRequestException(
+        'Der ausgewählte Organisationsbereich gehört nicht zur ausgewählten Organisation.',
+        'UNIT_ORGANIZATION_MISMATCH',
       );
     }
-  }
-
-  private generateInventoryNumber(): string {
-    const timestamp = Date.now().toString(36).toUpperCase();
-    const random = crypto.randomBytes(2).toString('hex').toUpperCase();
-    return `INV-${timestamp}-${random}`;
   }
 }

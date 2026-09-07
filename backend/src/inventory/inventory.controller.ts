@@ -26,6 +26,8 @@ import { CreateInventoryItemDto } from './dto/create-inventory-item.dto';
 import { UpdateInventoryItemDto } from './dto/update-inventory-item.dto';
 import { MoveInventoryItemDto } from './dto/move-inventory-item.dto';
 import { QueryInventoryItemDto } from './dto/query-inventory-item.dto';
+import { AccessoryCandidatesQueryDto } from './dto/accessory-candidates-query.dto';
+import { AssignAccessoryDto } from './dto/assign-accessory.dto';
 
 @ApiTags('inventory')
 @ApiBearerAuth()
@@ -42,13 +44,22 @@ export class InventoryController {
   @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.inventoryService.findOne(id);
+    return this.inventoryService.findOneWithInherited(id);
   }
 
   @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
   @Get(':id/movements')
   getMovements(@Param('id', ParseUUIDPipe) id: string) {
     return this.inventoryService.getMovements(id);
+  }
+
+  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @Get(':id/accessory-candidates')
+  getAccessoryCandidates(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: AccessoryCandidatesQueryDto,
+  ) {
+    return this.inventoryService.getAccessoryCandidates(id, query);
   }
 
   @RequirePermissions(PERMISSIONS.INVENTORY_MANAGE)
@@ -81,6 +92,24 @@ export class InventoryController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.inventoryService.move(id, dto, user.id);
+  }
+
+  @RequirePermissions(PERMISSIONS.INVENTORY_MANAGE)
+  @Put(':id/accessory')
+  assignAccessory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AssignAccessoryDto,
+  ) {
+    return this.inventoryService.assignAccessory(id, dto.accessoryItemId);
+  }
+
+  @RequirePermissions(PERMISSIONS.INVENTORY_MANAGE)
+  @Delete(':id/accessory/:accessoryId')
+  removeAccessory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('accessoryId', ParseUUIDPipe) accessoryId: string,
+  ) {
+    return this.inventoryService.removeAccessory(id, accessoryId);
   }
 
   @RequirePermissions(PERMISSIONS.INVENTORY_MANAGE)

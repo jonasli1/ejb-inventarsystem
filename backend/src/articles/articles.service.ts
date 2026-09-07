@@ -1,12 +1,12 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate } from '../common/dto/pagination-query.dto';
 import { AuditService } from '../audit/audit.service';
+import {
+  AppConflictException,
+  AppNotFoundException,
+} from '../common/exceptions/app.exception';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
 import { QueryArticleDto } from './dto/query-article.dto';
@@ -24,26 +24,8 @@ export class ArticlesService {
 
     const where: Prisma.ArticleWhereInput = {
       deletedAt: null,
-      ...(query.type ? { type: query.type } : {}),
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
-      ...(query.search
-        ? {
-            OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              {
-                manufacturer: { contains: query.search, mode: 'insensitive' },
-              },
-              {
-                description: { contains: query.search, mode: 'insensitive' },
-              },
-              {
-                category: {
-                  name: { contains: query.search, mode: 'insensitive' },
-                },
-              },
-            ],
-          }
-        : {}),
+      ...(query.search ? await this.buildSearchWhere(query.search) : {}),
     };
 
     const [data, total] = await this.prisma.$transaction([
@@ -67,12 +49,35 @@ export class ArticlesService {
     return paginate(enriched, total, page, pageSize);
   }
 
+  /** Substring match on aliases needs a raw query - Prisma has no "array element contains" filter. */
+  private async buildSearchWhere(
+    search: string,
+  ): Promise<Prisma.ArticleWhereInput> {
+    const aliasMatches = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT a.id FROM articles a
+      WHERE EXISTS (
+        SELECT 1 FROM unnest(a.aliases) AS alias WHERE alias ILIKE ${'%' + search + '%'}
+      )
+    `;
+
+    const OR: Prisma.ArticleWhereInput[] = [
+      { name: { contains: search, mode: 'insensitive' } },
+      { manufacturer: { contains: search, mode: 'insensitive' } },
+      { description: { contains: search, mode: 'insensitive' } },
+      { category: { name: { contains: search, mode: 'insensitive' } } },
+    ];
+    if (aliasMatches.length) {
+      OR.push({ id: { in: aliasMatches.map((m) => m.id) } });
+    }
+    return { OR };
+  }
+
   async findOne(id: string) {
     const article = await this.prisma.article.findFirst({
       where: { id, deletedAt: null },
       include: { category: true },
     });
-    if (!article) throw new NotFoundException('Article not found.');
+    if (!article) throw new AppNotFoundException('Artikel nicht gefunden.');
 
     const counts = await this.aggregateCounts([id]);
     return {
@@ -131,8 +136,9 @@ export class ArticlesService {
       where: { articleId: id, deletedAt: null },
     });
     if (stockCount > 0) {
-      throw new ConflictException(
-        'This article still has inventory items in stock and cannot be deleted. Remove or reassign all units first.',
+      throw new AppConflictException(
+        'Dieser Artikel hat noch Inventarobjekte im Bestand und kann nicht gelöscht werden. Entfernen oder verschieben Sie zuerst alle Objekte.',
+        'ARTICLE_HAS_STOCK',
       );
     }
     await this.prisma.article.update({

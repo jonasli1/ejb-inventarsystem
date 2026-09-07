@@ -1,4 +1,4 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as argon2 from 'argon2';
 import request from 'supertest';
@@ -9,6 +9,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { ChurchToolsService } from '../src/auth/churchtools/churchtools.service';
 import { EmailService } from '../src/notifications/email.service';
 import { ALL_PERMISSIONS } from '../src/common/constants/permissions';
+import { createValidationPipe } from '../src/common/pipes/validation-pipe.factory';
 
 // EmailService is exercised for real via the DI container in a couple of
 // tests below (notification default-on delivery, password reset) - mock the
@@ -48,13 +49,7 @@ describe('Inventarsystem API (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1');
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app.useGlobalPipes(createValidationPipe());
     await app.init();
 
     prisma = app.get(PrismaService);
@@ -287,7 +282,7 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'E2E Article', type: 'UNIQUE' })
+        .send({ name: 'E2E Article' })
         .expect(201);
 
       const item = await request(app.getHttpServer())
@@ -303,7 +298,8 @@ describe('Inventarsystem API (e2e)', () => {
         .expect(201);
 
       expect(item.body.status).toBe('available');
-      expect(item.body.inventoryNumber).toMatch(/^INV-/);
+      // inventory numbers are optional and never auto-generated.
+      expect(item.body.inventoryNumber).toBeNull();
 
       const list = await request(app.getHttpServer())
         .get(`/api/v1/inventory?articleId=${article.body.id}`)
@@ -356,7 +352,7 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Mismatch Article', type: 'UNIQUE' })
+        .send({ name: 'Mismatch Article' })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -396,7 +392,7 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Loan Test Cable', type: 'BULK' })
+        .send({ name: 'Loan Test Cable' })
         .expect(201);
 
       for (let i = 0; i < 3; i++) {
@@ -517,7 +513,7 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Overbook Article', type: 'BULK' })
+        .send({ name: 'Overbook Article' })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -722,7 +718,7 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Article With Stock', type: 'UNIQUE' })
+        .send({ name: 'Article With Stock' })
         .expect(201);
       const item = await request(app.getHttpServer())
         .post('/api/v1/inventory')
@@ -796,7 +792,7 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Status Article', type: 'UNIQUE' })
+        .send({ name: 'Status Article' })
         .expect(201);
       articleId = article.body.id;
     });
@@ -915,7 +911,7 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ name: 'Loan Viewer Article', type: 'UNIQUE' })
+        .send({ name: 'Loan Viewer Article' })
         .expect(201);
       await request(app.getHttpServer())
         .post('/api/v1/inventory')
@@ -997,7 +993,7 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Activity Article', type: 'UNIQUE' })
+        .send({ name: 'Activity Article' })
         .expect(201);
       const item = await request(app.getHttpServer())
         .post('/api/v1/inventory')
@@ -1216,12 +1212,12 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Purchase Article', type: 'UNIQUE' })
+        .send({ name: 'Purchase Article' })
         .expect(201);
       articleId = article.body.id;
     });
 
-    it('defaults purchaseDate to today when omitted, and accepts an explicit price/date', async () => {
+    it('leaves purchaseDate null when omitted (no default), and accepts an explicit price/date', async () => {
       const withDefaults = await request(app.getHttpServer())
         .post('/api/v1/inventory')
         .set('Authorization', `Bearer ${token}`)
@@ -1233,10 +1229,7 @@ describe('Inventarsystem API (e2e)', () => {
           ownerUnitId: unitId,
         })
         .expect(201);
-      expect(withDefaults.body.purchaseDate).toBeDefined();
-      expect(new Date(withDefaults.body.purchaseDate).toDateString()).toBe(
-        new Date().toDateString(),
-      );
+      expect(withDefaults.body.purchaseDate).toBeNull();
 
       const explicit = await request(app.getHttpServer())
         .post('/api/v1/inventory')
@@ -1470,7 +1463,7 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Export Article', type: 'UNIQUE' })
+        .send({ name: 'Export Article' })
         .expect(201);
       articleId = article.body.id;
       const item = await request(app.getHttpServer())
@@ -1597,7 +1590,6 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({
           name: 'Funkmikrofon Shure',
-          type: 'UNIQUE',
           manufacturer: 'Shure Inc.',
         })
         .expect(201);
@@ -1611,11 +1603,12 @@ describe('Inventarsystem API (e2e)', () => {
           ownerOrganizationId: org.body.id,
           ownerUnitId: unit.body.id,
           serialNumber: 'SN-SEARCHTEST-001',
+          inventoryNumber: 'INV-SEARCHTEST-001',
         })
         .expect(201);
 
       for (const search of [
-        item.body.inventoryNumber,
+        'INV-SEARCHTEST-001',
         'SN-SEARCHTEST-001',
         'Funkmikrofon',
         'Shure Inc',
@@ -1706,7 +1699,7 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${adminToken}`)
-          .send({ name: 'Workflow Article', type: 'UNIQUE' })
+          .send({ name: 'Workflow Article' })
           .expect(201)
       ).body;
       itemA = (
@@ -1995,7 +1988,7 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${adminToken}`)
-          .send({ name: 'Partial Approval Article', type: 'UNIQUE' })
+          .send({ name: 'Partial Approval Article' })
           .expect(201)
       ).body;
       const location = (
@@ -2118,7 +2111,7 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${adminToken}`)
-          .send({ name: 'Administer Test Article', type: 'UNIQUE' })
+          .send({ name: 'Administer Test Article' })
           .expect(201)
       ).body;
       const location = (
@@ -2218,7 +2211,7 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${adminToken}`)
-          .send({ name: 'Editable Loan Article', type: 'UNIQUE' })
+          .send({ name: 'Editable Loan Article' })
           .expect(201)
       ).body;
       const editLocation = (
@@ -2334,7 +2327,7 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${adminToken}`)
-          .send({ name: 'Reset On Edit Article', type: 'UNIQUE' })
+          .send({ name: 'Reset On Edit Article' })
           .expect(201)
       ).body;
       const resetLocation = (
@@ -2541,7 +2534,7 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'Attachment Article', type: 'UNIQUE' })
+          .send({ name: 'Attachment Article' })
           .expect(201)
       ).body;
       inventoryItemId = (
@@ -3169,7 +3162,7 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'Blackout Article', type: 'UNIQUE' })
+          .send({ name: 'Blackout Article' })
           .expect(201)
       ).body;
       const item = (
@@ -3254,7 +3247,7 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'Template Article', type: 'UNIQUE' })
+          .send({ name: 'Template Article' })
           .expect(201)
       ).body.id;
 
@@ -3439,7 +3432,6 @@ describe('Inventarsystem API (e2e)', () => {
           .set('Authorization', `Bearer ${token}`)
           .send({
             name: 'XLR Kabel 10m',
-            type: 'UNIQUE',
             categoryId: categoryA.id,
           })
           .expect(201)
@@ -3450,7 +3442,6 @@ describe('Inventarsystem API (e2e)', () => {
           .set('Authorization', `Bearer ${token}`)
           .send({
             name: 'Handmikrofon',
-            type: 'UNIQUE',
             categoryId: categoryB.id,
           })
           .expect(201)
@@ -3505,7 +3496,7 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'Removed Endpoint Article', type: 'UNIQUE' })
+          .send({ name: 'Removed Endpoint Article' })
           .expect(201)
       ).body;
       const item = (
@@ -3533,7 +3524,7 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'Movement Link Article', type: 'UNIQUE' })
+          .send({ name: 'Movement Link Article' })
           .expect(201)
       ).body;
       const item = (
@@ -3644,7 +3635,7 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${adminSessionToken}`)
-          .send({ name: 'InvNum Article', type: 'UNIQUE' })
+          .send({ name: 'InvNum Article' })
           .expect(201)
       ).body.id;
       itemId = (
@@ -3784,7 +3775,7 @@ describe('Inventarsystem API (e2e)', () => {
         await request(app.getHttpServer())
           .post('/api/v1/articles')
           .set('Authorization', `Bearer ${adminSessionToken}`)
-          .send({ name: 'InvNum Conflict Article', type: 'UNIQUE' })
+          .send({ name: 'InvNum Conflict Article' })
           .expect(201)
       ).body;
       const conflicting = (
@@ -3834,9 +3825,9 @@ describe('Inventarsystem API (e2e)', () => {
           .set('Authorization', `Bearer ${token}`)
           .send({
             name: 'Drahtlosmikrofon Set',
-            type: 'UNIQUE',
             manufacturer: 'Sennheiser',
             categoryId: category.id,
+            aliases: ['Funkmikro', 'Headset-Mikro'],
           })
           .expect(201)
       ).body;
@@ -3869,8 +3860,16 @@ describe('Inventarsystem API (e2e)', () => {
         ),
       ).toBe(true);
 
+      const byAlias = await request(app.getHttpServer())
+        .get('/api/v1/articles?search=Funkmikro')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(
+        byAlias.body.data.some((a: { id: string }) => a.id === article.id),
+      ).toBe(true);
+
       const noMatch = await request(app.getHttpServer())
-        .get('/api/v1/articles?search=Drahtlosmikrofon&type=CONSUMABLE')
+        .get('/api/v1/articles?search=Voellig-Unbekannter-Begriff')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(
@@ -3878,6 +3877,209 @@ describe('Inventarsystem API (e2e)', () => {
       ).toBe(false);
     });
   });
+
+  describe('inventory number uniqueness, reuse, status transitions, accessories', () => {
+    let token: string;
+    let articleId: string;
+    let locationId: string;
+    let roomId: string;
+    let orgId: string;
+    let unitId: string;
+
+    beforeAll(async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+      token = login.body.accessToken;
+
+      const org = await request(app.getHttpServer())
+        .post('/api/v1/organizations')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Domain Model Org' })
+        .expect(201);
+      orgId = org.body.id;
+      const unit = await request(app.getHttpServer())
+        .post(`/api/v1/organizations/${orgId}/units`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Domain Model Unit' })
+        .expect(201);
+      unitId = unit.body.id;
+      const location = await request(app.getHttpServer())
+        .post('/api/v1/locations')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Domain Model Location' })
+        .expect(201);
+      locationId = location.body.id;
+      const room = await request(app.getHttpServer())
+        .post('/api/v1/rooms')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Domain Model Room', locationId })
+        .expect(201);
+      roomId = room.body.id;
+      const article = await request(app.getHttpServer())
+        .post('/api/v1/articles')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Domain Model Article' })
+        .expect(201);
+      articleId = article.body.id;
+    });
+
+    async function createItem(body: Record<string, unknown> = {}) {
+      return request(app.getHttpServer())
+        .post('/api/v1/inventory')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ articleId, locationId, roomId, ownerOrganizationId: orgId, ownerUnitId: unitId, ...body })
+        .expect(201);
+    }
+
+    it('rejects a duplicate case-insensitive inventory number among active items', async () => {
+      await createItem({ inventoryNumber: 'DUP-CASE-001' });
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          articleId,
+          locationId,
+          roomId,
+          ownerOrganizationId: orgId,
+          ownerUnitId: unitId,
+          inventoryNumber: 'dup-case-001',
+        })
+        .expect(409);
+    });
+
+    it('frees up an inventory number for reuse once the holder is retired', async () => {
+      const first = await createItem({ inventoryNumber: 'REUSE-001' });
+
+      await request(app.getHttpServer())
+        .put(`/api/v1/inventory/${first.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'retired' })
+        .expect(200);
+
+      const second = await createItem({ inventoryNumber: 'REUSE-001' });
+      expect(second.body.inventoryNumber).toBe('REUSE-001');
+    });
+
+    it('allows the maintenance -> retired status transition', async () => {
+      const item = await createItem({ status: 'maintenance' });
+      const updated = await request(app.getHttpServer())
+        .put(`/api/v1/inventory/${item.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'retired' })
+        .expect(200);
+      expect(updated.body.status).toBe('retired');
+    });
+
+    it('rejects reactivating a retired item (retired is terminal)', async () => {
+      const item = await createItem({ status: 'retired' });
+      await request(app.getHttpServer())
+        .put(`/api/v1/inventory/${item.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'available' })
+        .expect(400);
+    });
+
+    it('accepts and returns nextDguvV3Check', async () => {
+      const item = await createItem({ nextDguvV3Check: '2027-05-01' });
+      expect(new Date(item.body.nextDguvV3Check).toISOString().slice(0, 10)).toBe(
+        '2027-05-01',
+      );
+    });
+
+    it('inherits the article notes and documents (read-only, tagged with origin) onto the inventory item detail view', async () => {
+      const article = await request(app.getHttpServer())
+        .post('/api/v1/articles')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Article With Notes', notes: 'Interne Notiz zum Artikel' })
+        .expect(201);
+      const item = await request(app.getHttpServer())
+        .post('/api/v1/inventory')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          articleId: article.body.id,
+          locationId,
+          roomId,
+          ownerOrganizationId: orgId,
+          ownerUnitId: unitId,
+        })
+        .expect(201);
+
+      const detail = await request(app.getHttpServer())
+        .get(`/api/v1/inventory/${item.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(detail.body.article.notes).toBe('Interne Notiz zum Artikel');
+      expect(detail.body.article.documents).toEqual([]);
+    });
+
+    describe('accessories', () => {
+      it('assigns and removes an accessory, and reports eligibility on the candidates endpoint', async () => {
+        const parent = await createItem();
+        const child = await createItem({ serialNumber: 'ACCESSORY-CHILD-SN-001' });
+        const grandchildCandidate = await createItem();
+
+        // Give the "child" an accessory of its own first, to prove it then
+        // becomes ineligible to become someone else's accessory.
+        await request(app.getHttpServer())
+          .put(`/api/v1/inventory/${child.body.id}/accessory`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ accessoryItemId: grandchildCandidate.body.id })
+          .expect(200);
+
+        const candidates = await request(app.getHttpServer())
+          .get(
+            `/api/v1/inventory/${parent.body.id}/accessory-candidates?search=ACCESSORY-CHILD-SN-001`,
+          )
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        const childCandidate = candidates.body.data.find(
+          (c: { id: string }) => c.id === child.body.id,
+        );
+        expect(childCandidate.eligible).toBe(false);
+        expect(childCandidate.reason).toBeTruthy();
+
+        // Detach the grandchild so "child" becomes a clean, eligible leaf again.
+        await request(app.getHttpServer())
+          .delete(`/api/v1/inventory/${child.body.id}/accessory/${grandchildCandidate.body.id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+
+        await request(app.getHttpServer())
+          .put(`/api/v1/inventory/${parent.body.id}/accessory`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ accessoryItemId: child.body.id })
+          .expect(200);
+
+        const detail = await request(app.getHttpServer())
+          .get(`/api/v1/inventory/${parent.body.id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(
+          detail.body.accessories.some((a: { id: string }) => a.id === child.body.id),
+        ).toBe(true);
+      });
+
+      it('refuses to make an item an accessory of its own accessory (depth 1, no cycles)', async () => {
+        const a = await createItem();
+        const b = await createItem();
+        await request(app.getHttpServer())
+          .put(`/api/v1/inventory/${a.body.id}/accessory`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ accessoryItemId: b.body.id })
+          .expect(200);
+
+        // b is now an accessory of a; a cannot become an accessory of b (cycle).
+        await request(app.getHttpServer())
+          .put(`/api/v1/inventory/${b.body.id}/accessory`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ accessoryItemId: a.body.id })
+          .expect(400);
+      });
+    });
+  });
+
 });
 
 async function resetDatabase(prisma: PrismaService) {

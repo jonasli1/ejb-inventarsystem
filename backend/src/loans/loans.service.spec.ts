@@ -745,10 +745,6 @@ describe('LoansService', () => {
           where: { id: 'item-1' },
           data: { status: 'borrowed' },
         });
-        expect(prisma.tx.loanItem.update).toHaveBeenCalledWith({
-          where: { id: 'li-1' },
-          data: { checkedOutCondition: 80 },
-        });
         expect(prisma.tx.loan.update).toHaveBeenCalledWith(
           expect.objectContaining({
             data: expect.objectContaining({ status: 'issued' }),

@@ -1,1 +1,5 @@
 .claude
+
+# Local-only Docker Compose overrides (e.g. exposing a port to work around a
+# host-specific conflict) - never something to share via the repo.
+docker-compose.override.yml

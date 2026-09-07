@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ArticleType } from '@prisma/client';
 import {
-  IsEnum,
+  ArrayMaxSize,
+  IsArray,
   IsObject,
   IsOptional,
   IsString,
@@ -21,14 +21,29 @@ export class CreateArticleDto {
   @IsString()
   description?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Internal notes, distinct from the public-facing description. Inherited (read-only) onto each inventory item of this article.',
+  })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Short/affectionate alternate names (e.g. "Beamer"), included in article search.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  aliases?: string[];
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
   categoryId?: string;
-
-  @ApiProperty({ enum: ArticleType })
-  @IsEnum(ArticleType)
-  type: ArticleType;
 
   @ApiPropertyOptional()
   @IsOptional()

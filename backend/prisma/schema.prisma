@@ -22,12 +22,6 @@ enum GroupSource {
   manual
 }
 
-enum ArticleType {
-  UNIQUE
-  BULK
-  CONSUMABLE
-}
-
 enum InventoryStatus {
   available
   borrowed
@@ -99,14 +93,14 @@ enum BackupFrequency {
 // ---------------------------------------------------------------------------
 
 model User {
-  id               String           @id @default(uuid())
-  displayName      String           @map("display_name")
-  email            String           @unique
-  isActive         Boolean          @default(true) @map("is_active")
-  themePreference  ThemePreference  @default(system) @map("theme_preference")
-  createdAt        DateTime         @default(now()) @map("created_at")
-  updatedAt        DateTime         @updatedAt @map("updated_at")
-  deletedAt        DateTime?        @map("deleted_at")
+  id              String          @id @default(uuid())
+  displayName     String          @map("display_name")
+  email           String          @unique
+  isActive        Boolean         @default(true) @map("is_active")
+  themePreference ThemePreference @default(system) @map("theme_preference")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  deletedAt       DateTime?       @map("deleted_at")
 
   authIdentities          AuthIdentity[]
   refreshTokens           RefreshToken[]
@@ -370,18 +364,23 @@ model Category {
 }
 
 model Article {
-  id            String      @id @default(uuid())
+  id            String    @id @default(uuid())
   name          String
   description   String?
-  categoryId    String?     @map("category_id")
-  type          ArticleType
-  unitOfMeasure String?     @map("unit_of_measure")
+  // Internal notes (distinct from the public-facing `description`) - read-only
+  // inherited onto each InventoryItem's detail view, tagged with its origin.
+  notes         String?
+  // Short/affectionate alternate names (e.g. "Beamer" for a specific
+  // projector), included in article search.
+  aliases       String[]  @default([])
+  categoryId    String?   @map("category_id")
+  unitOfMeasure String?   @map("unit_of_measure")
   manufacturer  String?
-  imageUrl      String?     @map("image_url")
+  imageUrl      String?   @map("image_url")
   attributes    Json?
-  createdAt     DateTime    @default(now()) @map("created_at")
-  updatedAt     DateTime    @updatedAt @map("updated_at")
-  deletedAt     DateTime?   @map("deleted_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
 
   category          Category?          @relation(fields: [categoryId], references: [id])
   inventoryItems    InventoryItem[]
@@ -432,13 +431,24 @@ model InventoryItem {
   roomId              String          @map("room_id")
   ownerOrganizationId String          @map("owner_organization_id")
   ownerUnitId         String          @map("owner_unit_id")
-  inventoryNumber     String          @unique @map("inventory_number")
+  // Optional and NOT globally unique in Prisma's DSL - case-insensitive
+  // uniqueness only applies among non-retired items, and a retired item's
+  // number frees up for reuse. That's a partial + functional (lower())
+  // unique index, which Prisma's schema DSL can't express; it's hand-added
+  // in the migration SQL (see migration
+  // 20260907_inventory_domain_model_overhaul), same pattern as the
+  // NULLS NOT DISTINCT constraint on GroupOrganizationScope below.
+  inventoryNumber     String?         @map("inventory_number")
   status              InventoryStatus @default(available)
   serialNumber        String?         @map("serial_number")
-  conditionPercent    Int?            @map("condition_percent")
   purchasePrice       Decimal?        @map("purchase_price") @db.Decimal(10, 2)
   purchaseDate        DateTime?       @map("purchase_date")
+  nextDguvV3Check     DateTime?       @map("next_dguv_v3_check")
   notes               String?
+  // Self-relation: an item may have accessory items (e.g. a charging cable
+  // for a device), enforced to depth 1, no cycles - see
+  // InventoryService's accessory rules.
+  parentItemId        String?         @map("parent_item_id")
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")
   deletedAt           DateTime?       @map("deleted_at")
@@ -448,6 +458,8 @@ model InventoryItem {
   room              Room             @relation(fields: [roomId], references: [id])
   ownerOrganization Organization     @relation(fields: [ownerOrganizationId], references: [id])
   ownerUnit         OrganizationUnit @relation(fields: [ownerUnitId], references: [id])
+  parentItem        InventoryItem?   @relation("ItemAccessories", fields: [parentItemId], references: [id])
+  accessories       InventoryItem[]  @relation("ItemAccessories")
 
   stockMovements StockMovement[]
   loanItems      LoanItem[]
@@ -455,6 +467,8 @@ model InventoryItem {
   @@index([articleId])
   @@index([locationId, roomId])
   @@index([ownerOrganizationId, ownerUnitId])
+  @@index([status])
+  @@index([parentItemId])
   @@map("inventory_items")
 }
 

@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   InventoryItem,
   InventoryStatus,
@@ -19,6 +14,11 @@ import { GroupsService, type LoanScopeEntry } from '../groups/groups.service';
 import { LoanTemplatesService } from './loan-templates.service';
 import { EmailService } from '../notifications/email.service';
 import { PERMISSIONS } from '../common/constants/permissions';
+import {
+  AppBadRequestException,
+  AppForbiddenException,
+  AppNotFoundException,
+} from '../common/exceptions/app.exception';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { CreateLoanDto, CreateLoanItemDto } from './dto/create-loan.dto';
 import { UpdateLoanDto } from './dto/update-loan.dto';
@@ -124,7 +124,7 @@ export class LoansService {
       where: { id, deletedAt: null },
       include: LOAN_INCLUDE,
     });
-    if (!loan) throw new NotFoundException('Loan not found.');
+    if (!loan) throw new AppNotFoundException('Ausleihe nicht gefunden.');
     if (actor) this.assertCanViewLoan(loan, actor);
     return loan;
   }
@@ -148,8 +148,9 @@ export class LoansService {
       PERMISSIONS.LOANS_ADMINISTER,
     ].some((p) => user.permissions.includes(p));
     if (!hasViewTier) {
-      throw new ForbiddenException(
-        'You do not have permission to view this loan.',
+      throw new AppForbiddenException(
+        'Sie haben keine Berechtigung, diese Ausleihe einzusehen.',
+        'MISSING_PERMISSION',
       );
     }
   }
@@ -190,8 +191,9 @@ export class LoansService {
     const scope = await this.groups.getLoanScopeForUser(userId);
     const outOfScope = items.find((i) => !this.isItemInScope(scope, i));
     if (outOfScope) {
-      throw new ForbiddenException(
-        `Inventory item ${outOfScope.inventoryNumber} does not belong to one of your organizations/units.`,
+      throw new AppForbiddenException(
+        `Inventarobjekt ${outOfScope.inventoryNumber ?? outOfScope.id} gehört zu keiner Ihrer Organisationen/Bereiche.`,
+        'ITEM_OUT_OF_SCOPE',
       );
     }
   }
@@ -208,8 +210,9 @@ export class LoansService {
     if (loan.lentByUserId === user.id) return;
     if (user.permissions.includes(PERMISSIONS.LOANS_MANAGE)) return;
     if (user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER)) return;
-    throw new ForbiddenException(
-      'You do not have permission to edit this loan.',
+    throw new AppForbiddenException(
+      'Sie haben keine Berechtigung, diese Ausleihe zu bearbeiten.',
+      'MISSING_PERMISSION',
     );
   }
 
@@ -224,8 +227,9 @@ export class LoansService {
   ): Promise<void> {
     if (user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER)) return;
     if (!user.permissions.includes(PERMISSIONS.LOANS_MANAGE)) {
-      throw new ForbiddenException(
-        'You do not have permission to manage this loan.',
+      throw new AppForbiddenException(
+        'Sie haben keine Berechtigung, diese Ausleihe zu verwalten.',
+        'MISSING_PERMISSION',
       );
     }
     const scope = await this.groups.getLoanScopeForUser(user.id);
@@ -233,8 +237,9 @@ export class LoansService {
       (i) => !this.isItemInScope(scope, i.inventoryItem),
     );
     if (outOfScope) {
-      throw new ForbiddenException(
-        'This loan includes items belonging to an organization/unit you do not manage.',
+      throw new AppForbiddenException(
+        'Diese Ausleihe enthält Objekte einer Organisation/eines Bereichs, den Sie nicht verwalten.',
+        'ITEM_OUT_OF_SCOPE',
       );
     }
   }
@@ -250,8 +255,9 @@ export class LoansService {
       !user.permissions.includes(PERMISSIONS.LOANS_SPEND) &&
       !user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER)
     ) {
-      throw new ForbiddenException(
-        'You do not have permission to issue this loan.',
+      throw new AppForbiddenException(
+        'Sie haben keine Berechtigung, diese Ausleihe auszugeben.',
+        'MISSING_PERMISSION',
       );
     }
   }
@@ -262,8 +268,9 @@ export class LoansService {
       !user.permissions.includes(PERMISSIONS.LOANS_SPEND) &&
       !user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER)
     ) {
-      throw new ForbiddenException(
-        'You do not have permission to return items on this loan.',
+      throw new AppForbiddenException(
+        'Sie haben keine Berechtigung, Objekte dieser Ausleihe zurückzunehmen.',
+        'MISSING_PERMISSION',
       );
     }
   }
@@ -287,8 +294,9 @@ export class LoansService {
       PERMISSIONS.LOANS_ADMINISTER,
     );
     if (!isAdminister && !user.permissions.includes(PERMISSIONS.LOANS_MANAGE)) {
-      throw new ForbiddenException(
-        'You do not have permission to approve this loan.',
+      throw new AppForbiddenException(
+        'Sie haben keine Berechtigung, diese Ausleihe zu genehmigen.',
+        'MISSING_PERMISSION',
       );
     }
 
@@ -310,16 +318,18 @@ export class LoansService {
       const inScopeIds = new Set(inScope.map((i) => i.id));
       const outOfScope = dto.itemIds.find((id) => !inScopeIds.has(id));
       if (outOfScope) {
-        throw new ForbiddenException(
-          `Loan item ${outOfScope} does not belong to an organization/unit you manage, or is already approved.`,
+        throw new AppForbiddenException(
+          `Das Ausleih-Objekt ${outOfScope} gehört zu keiner von Ihnen verwalteten Organisation/keinem Bereich, oder ist bereits genehmigt.`,
+          'ITEM_OUT_OF_SCOPE',
         );
       }
       return dto.itemIds;
     }
 
     if (inScope.length === 0) {
-      throw new ForbiddenException(
-        "None of this loan's (still unapproved) items belong to an organization/unit you manage.",
+      throw new AppForbiddenException(
+        'Keines der (noch unbestätigten) Objekte dieser Ausleihe gehört zu einer von Ihnen verwalteten Organisation/einem Bereich.',
+        'ITEM_OUT_OF_SCOPE',
       );
     }
     return inScope.map((i) => i.id);
@@ -333,8 +343,9 @@ export class LoansService {
     item: Pick<InventoryItem, 'status' | 'inventoryNumber'>,
   ): void {
     if (!BOOKABLE_STATUSES.includes(item.status)) {
-      throw new BadRequestException(
-        `Inventory item ${item.inventoryNumber} has status "${item.status}" and must be changed before it can be part of a loan.`,
+      throw new AppBadRequestException(
+        `Inventarobjekt ${item.inventoryNumber ?? ''} hat den Status "${item.status}" und muss erst geändert werden, bevor es Teil einer Ausleihe sein kann.`,
+        'ITEM_NOT_BOOKABLE',
       );
     }
   }
@@ -384,8 +395,9 @@ export class LoansService {
       select: { id: true, reason: true, startDate: true, endDate: true },
     });
     if (conflict) {
-      throw new BadRequestException(
-        `The requested period overlaps a blackout period (${conflict.startDate.toISOString().slice(0, 10)} – ${conflict.endDate.toISOString().slice(0, 10)}${conflict.reason ? `: ${conflict.reason}` : ''}) during which no loans are possible.`,
+      throw new AppBadRequestException(
+        `Der gewünschte Zeitraum überschneidet sich mit einer Ausleihsperre (${conflict.startDate.toISOString().slice(0, 10)} – ${conflict.endDate.toISOString().slice(0, 10)}${conflict.reason ? `: ${conflict.reason}` : ''}), in der keine Ausleihen möglich sind.`,
+        'BLACKOUT_CONFLICT',
       );
     }
   }
@@ -412,12 +424,13 @@ export class LoansService {
           where: { id: spec.inventoryItemId, deletedAt: null },
         });
         if (!item)
-          throw new NotFoundException(
-            `Inventory item ${spec.inventoryItemId} not found.`,
+          throw new AppNotFoundException(
+            `Inventarobjekt ${spec.inventoryItemId} nicht gefunden.`,
           );
         if (usedIds.has(item.id)) {
-          throw new BadRequestException(
-            `Inventory item ${item.inventoryNumber} was selected twice.`,
+          throw new AppBadRequestException(
+            `Inventarobjekt ${item.inventoryNumber ?? item.id} wurde doppelt ausgewählt.`,
+            'ITEM_SELECTED_TWICE',
           );
         }
         this.assertBookableStatus(item);
@@ -429,8 +442,9 @@ export class LoansService {
             excludeLoanId,
           )
         ) {
-          throw new BadRequestException(
-            `Inventory item ${item.inventoryNumber} is already booked for the requested period.`,
+          throw new AppBadRequestException(
+            `Inventarobjekt ${item.inventoryNumber ?? item.id} ist im gewünschten Zeitraum bereits gebucht.`,
+            'ITEM_ALREADY_BOOKED',
           );
         }
         usedIds.add(item.id);
@@ -463,8 +477,9 @@ export class LoansService {
           }
         }
         if (picked.length < quantity) {
-          throw new BadRequestException(
-            `Not enough available units for article ${spec.articleId} in the requested period: requested ${quantity}, found ${picked.length}.`,
+          throw new AppBadRequestException(
+            `Nicht genügend verfügbare Einheiten für Artikel ${spec.articleId} im gewünschten Zeitraum: angefragt ${quantity}, gefunden ${picked.length}.`,
+            'NOT_ENOUGH_AVAILABLE_UNITS',
           );
         }
         for (const item of picked) {
@@ -474,8 +489,9 @@ export class LoansService {
         continue;
       }
 
-      throw new BadRequestException(
-        'Each loan item requires inventoryItemId or articleId.',
+      throw new AppBadRequestException(
+        'Jedes Ausleih-Objekt benötigt entweder inventoryItemId oder articleId.',
+        'ITEM_SPEC_INVALID',
       );
     }
 
@@ -488,15 +504,17 @@ export class LoansService {
 
   async create(dto: CreateLoanDto, user: AuthenticatedUser) {
     if (!dto.borrowerPersonId && !dto.borrowerName) {
-      throw new BadRequestException(
-        'Either borrowerPersonId or borrowerName must be provided.',
+      throw new AppBadRequestException(
+        'Es muss entweder borrowerPersonId oder borrowerName angegeben werden.',
+        'BORROWER_REQUIRED',
       );
     }
 
     const tier = this.resolveActorTier(user);
     if (!tier)
-      throw new ForbiddenException(
-        'You do not have permission to create loans.',
+      throw new AppForbiddenException(
+        'Sie haben keine Berechtigung, Ausleihen anzulegen.',
+        'MISSING_PERMISSION',
       );
 
     const checkoutDate = dto.checkoutDate
@@ -597,7 +615,10 @@ export class LoansService {
   async update(loanId: string, dto: UpdateLoanDto, user: AuthenticatedUser) {
     const loan = await this.findOne(loanId);
     if (loan.status === LoanStatus.completed) {
-      throw new BadRequestException('Completed loans can no longer be edited.');
+      throw new AppBadRequestException(
+        'Abgeschlossene Ausleihen können nicht mehr bearbeitet werden.',
+        'LOAN_COMPLETED',
+      );
     }
     this.assertCanEditLoan(loan, user);
 
@@ -666,10 +687,6 @@ export class LoansService {
           data: { loanId, inventoryItemId: item.id },
         });
         if (loan.status === LoanStatus.issued) {
-          await tx.loanItem.update({
-            where: { id: created.id },
-            data: { checkedOutCondition: item.conditionPercent },
-          });
           await tx.inventoryItem.update({
             where: { id: item.id },
             data: { status: InventoryStatus.borrowed },
@@ -760,8 +777,9 @@ export class LoansService {
   async approve(loanId: string, dto: ApproveLoanDto, user: AuthenticatedUser) {
     const loan = await this.findOne(loanId);
     if (loan.status !== LoanStatus.requested) {
-      throw new BadRequestException(
-        `Only requested loans can be approved (current status: ${loan.status}).`,
+      throw new AppBadRequestException(
+        `Nur beantragte Ausleihen können genehmigt werden (aktueller Status: ${loan.status}).`,
+        'INVALID_LOAN_STATUS',
       );
     }
 
@@ -819,38 +837,19 @@ export class LoansService {
     return updated;
   }
 
-  /** The physical hand-out step ("Ausgabe-Prozess"): captures condition, flips items to borrowed. */
-  async issue(loanId: string, dto: IssueLoanDto, user: AuthenticatedUser) {
+  /** The physical hand-out step ("Ausgabe-Prozess"): flips items to borrowed. */
+  async issue(loanId: string, _dto: IssueLoanDto, user: AuthenticatedUser) {
     const loan = await this.findOne(loanId);
     if (loan.status !== LoanStatus.approved) {
-      throw new BadRequestException(
-        `Only approved loans can be issued (current status: ${loan.status}).`,
+      throw new AppBadRequestException(
+        `Nur genehmigte Ausleihen können ausgegeben werden (aktueller Status: ${loan.status}).`,
+        'INVALID_LOAN_STATUS',
       );
     }
     this.assertCanIssue(user);
 
-    const overrides = new Map(
-      (dto.items ?? []).map((i) => [i.loanItemId, i.checkedOutCondition]),
-    );
-    const unknownIds = [...overrides.keys()].filter(
-      (id) => !loan.items.some((li) => li.id === id),
-    );
-    if (unknownIds.length) {
-      throw new BadRequestException(
-        `Loan item(s) ${unknownIds.join(', ')} do not belong to loan ${loanId}.`,
-      );
-    }
-
     await this.prisma.$transaction(async (tx) => {
       for (const loanItem of loan.items) {
-        const condition = overrides.has(loanItem.id)
-          ? (overrides.get(loanItem.id) ?? null)
-          : loanItem.inventoryItem.conditionPercent;
-
-        await tx.loanItem.update({
-          where: { id: loanItem.id },
-          data: { checkedOutCondition: condition },
-        });
         await tx.inventoryItem.update({
           where: { id: loanItem.inventoryItemId },
           data: { status: InventoryStatus.borrowed },
@@ -904,7 +903,10 @@ export class LoansService {
     const loan = await this.findOne(loanId);
     await this.assertCanResetStatus(loan, user);
     if (loan.status === LoanStatus.requested) {
-      throw new BadRequestException('Loan is already in "requested" status.');
+      throw new AppBadRequestException(
+        'Die Ausleihe befindet sich bereits im Status "beantragt".',
+        'INVALID_LOAN_STATUS',
+      );
     }
 
     await this.prisma.$transaction([
@@ -934,8 +936,9 @@ export class LoansService {
   ) {
     const loan = await this.findOne(loanId);
     if (loan.status !== LoanStatus.issued) {
-      throw new BadRequestException(
-        `Only issued loans can be returned (current status: ${loan.status}).`,
+      throw new AppBadRequestException(
+        `Nur ausgegebene Ausleihen können zurückgenommen werden (aktueller Status: ${loan.status}).`,
+        'INVALID_LOAN_STATUS',
       );
     }
     this.assertCanReturnItems(user);
@@ -943,8 +946,9 @@ export class LoansService {
     const loanItemIds = new Set(loan.items.map((i) => i.id));
     for (const returnItem of dto.items) {
       if (!loanItemIds.has(returnItem.loanItemId)) {
-        throw new BadRequestException(
-          `Loan item ${returnItem.loanItemId} does not belong to loan ${loanId}.`,
+        throw new AppBadRequestException(
+          `Ausleih-Objekt ${returnItem.loanItemId} gehört nicht zur Ausleihe ${loanId}.`,
+          'ITEM_NOT_IN_LOAN',
         );
       }
     }
@@ -958,27 +962,15 @@ export class LoansService {
         if (loanItem.returnedAt) continue;
 
         const newStatus = returnItem.newStatus ?? InventoryStatus.available;
-        const isConsumable =
-          loanItem.inventoryItem.article.type === 'CONSUMABLE';
 
         await tx.loanItem.update({
           where: { id: loanItem.id },
-          data: {
-            returnedAt: new Date(),
-            returnedCondition: isConsumable
-              ? returnItem.returnedCondition
-              : undefined,
-          },
+          data: { returnedAt: new Date() },
         });
 
         await tx.inventoryItem.update({
           where: { id: loanItem.inventoryItemId },
-          data: {
-            status: newStatus,
-            ...(isConsumable && returnItem.returnedCondition !== undefined
-              ? { conditionPercent: returnItem.returnedCondition }
-              : {}),
-          },
+          data: { status: newStatus },
         });
 
         await tx.stockMovement.create({
@@ -988,13 +980,8 @@ export class LoansService {
             type: StockMovementType.status_change,
             oldStatus: loanItem.inventoryItem.status,
             newStatus,
-            oldCondition: loanItem.inventoryItem.conditionPercent,
-            newCondition:
-              isConsumable && returnItem.returnedCondition !== undefined
-                ? returnItem.returnedCondition
-                : loanItem.inventoryItem.conditionPercent,
             userId: user.id,
-            note: `Returned via loan ${loanId}`,
+            note: `Zurückgegeben via Ausleihe ${loanId}`,
           },
         });
       }
@@ -1040,5 +1027,20 @@ export class LoansService {
     }
 
     return this.findOne(loanId);
+  }
+
+  /**
+   * Hard delete: fully removes the loan (and its items) from the database,
+   * not just a soft-delete. Gated by the dedicated loans.delete permission
+   * (see permissions.guard usage in LoansController) since this is
+   * irreversible and distinct from every other loan action.
+   */
+  async remove(loanId: string): Promise<void> {
+    const loan = await this.prisma.loan.findFirst({
+      where: { id: loanId },
+      select: { id: true, borrowerName: true, borrowerPersonId: true },
+    });
+    if (!loan) throw new AppNotFoundException('Ausleihe nicht gefunden.');
+    await this.prisma.loan.delete({ where: { id: loanId } });
   }
 }

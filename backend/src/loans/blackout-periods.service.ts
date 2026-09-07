@@ -1,10 +1,10 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import {
+  AppBadRequestException,
+  AppNotFoundException,
+} from '../common/exceptions/app.exception';
 import { CreateBlackoutPeriodDto } from './dto/create-blackout-period.dto';
 
 @Injectable()
@@ -24,7 +24,10 @@ export class BlackoutPeriodsService {
     const startDate = new Date(dto.startDate);
     const endDate = new Date(dto.endDate);
     if (endDate < startDate) {
-      throw new BadRequestException('endDate must not be before startDate.');
+      throw new AppBadRequestException(
+        'Das Enddatum darf nicht vor dem Startdatum liegen.',
+        'INVALID_DATE_RANGE',
+      );
     }
 
     const period = await this.prisma.loanBlackoutPeriod.create({
@@ -46,7 +49,8 @@ export class BlackoutPeriodsService {
     const period = await this.prisma.loanBlackoutPeriod.findUnique({
       where: { id },
     });
-    if (!period) throw new NotFoundException('Blackout period not found.');
+    if (!period)
+      throw new AppNotFoundException('Sperrzeit nicht gefunden.');
 
     await this.prisma.loanBlackoutPeriod.delete({ where: { id } });
 

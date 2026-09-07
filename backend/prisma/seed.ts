@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { ArticleType, GroupSource, PrismaClient } from '@prisma/client';
+import { GroupSource, PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { ALL_PERMISSIONS } from '../src/common/constants/permissions';
 
@@ -37,6 +37,18 @@ const ROLE_DEFINITIONS: { name: string; description: string; permissionKeys: str
     permissionKeys: ['inventory.view', 'loans.view', 'reports.view'],
   },
 ];
+
+/** inventoryNumber is no longer @unique (just a partial index on active items), so upserts key on id via a findFirst lookup instead. */
+async function upsertInventoryItemByNumber(
+  inventoryNumber: string,
+  create: Parameters<typeof prisma.inventoryItem.create>[0]['data'],
+) {
+  const existing = await prisma.inventoryItem.findFirst({
+    where: { inventoryNumber },
+  });
+  if (existing) return existing;
+  return prisma.inventoryItem.create({ data: create });
+}
 
 async function main() {
   console.log('Seeding permissions...');
@@ -129,15 +141,29 @@ async function main() {
     create: { name: 'Technik' },
   });
 
+  // Object types (UNIQUE/BULK/CONSUMABLE) no longer exist - every article's
+  // units behave the same way, one InventoryItem row per physical unit.
   const mischpult = await prisma.article.upsert({
     where: { id: (await prisma.article.findFirst({ where: { name: 'Mischpult Behringer X32' } }))?.id ?? '' },
     update: {},
     create: {
       name: 'Mischpult Behringer X32',
       description: 'Digitales 32-Kanal Mischpult',
+      notes: 'Jährliche Kalibrierung durch den Technikbeauftragten erforderlich.',
+      aliases: ['X32', 'Mischer', 'Behringer'],
       categoryId: categoryTechnik.id,
-      type: ArticleType.UNIQUE,
       manufacturer: 'Behringer',
+    },
+  });
+  const netzkabel = await prisma.article.upsert({
+    where: { id: (await prisma.article.findFirst({ where: { name: 'Netzkabel (Kaltgeräte)' } }))?.id ?? '' },
+    update: {},
+    create: {
+      name: 'Netzkabel (Kaltgeräte)',
+      description: 'Kaltgerätekabel für das Mischpult',
+      aliases: ['Stromkabel Mischpult'],
+      categoryId: categoryTechnik.id,
+      unitOfMeasure: 'Stück',
     },
   });
   const stromkabel = await prisma.article.upsert({
@@ -146,8 +172,8 @@ async function main() {
     create: {
       name: 'Stromkabel 5m',
       description: 'Schuko-Verlängerungskabel, 5 Meter',
+      aliases: ['Verlängerungskabel', 'Kabeltrommel 5m'],
       categoryId: categoryTechnik.id,
-      type: ArticleType.BULK,
       unitOfMeasure: 'Stück',
     },
   });
@@ -157,89 +183,103 @@ async function main() {
     create: {
       name: 'Gaffa Tape Rolle',
       description: 'Gewebeklebeband, 50mm x 25m',
+      aliases: ['Gaffer Tape', 'Panzertape'],
       categoryId: categoryTechnik.id,
-      type: ArticleType.CONSUMABLE,
       unitOfMeasure: 'Rolle',
     },
   });
 
   console.log('Seeding inventory items...');
-  await prisma.inventoryItem.upsert({
-    where: { inventoryNumber: 'INV-MISCHPULT-001' },
-    update: {},
-    create: {
-      articleId: mischpult.id,
-      locationId: gemeindehaus.id,
-      roomId: technikraum.id,
-      ownerOrganizationId: orgA.id,
-      ownerUnitId: unitTechnik.id,
-      inventoryNumber: 'INV-MISCHPULT-001',
-      status: 'available',
-      serialNumber: 'X32-2024-0001',
-    },
+  const mischpultItem = await upsertInventoryItemByNumber('INV-MISCHPULT-001', {
+    articleId: mischpult.id,
+    locationId: gemeindehaus.id,
+    roomId: technikraum.id,
+    ownerOrganizationId: orgA.id,
+    ownerUnitId: unitTechnik.id,
+    inventoryNumber: 'INV-MISCHPULT-001',
+    status: 'available',
+    serialNumber: 'X32-2024-0001',
+    // Demonstrates the new DGUV V3 field.
+    nextDguvV3Check: new Date(new Date().getFullYear() + 1, 2, 1),
   });
+
+  // Demonstrates the accessory relation: this power cable belongs to (and is
+  // only ever loaned/tracked together with) the mixing console above.
+  const netzkabelItem = await upsertInventoryItemByNumber('INV-NETZKABEL-001', {
+    articleId: netzkabel.id,
+    locationId: gemeindehaus.id,
+    roomId: technikraum.id,
+    ownerOrganizationId: orgA.id,
+    ownerUnitId: unitTechnik.id,
+    inventoryNumber: 'INV-NETZKABEL-001',
+    status: 'available',
+  });
+  if (!netzkabelItem.parentItemId) {
+    await prisma.inventoryItem.update({
+      where: { id: netzkabelItem.id },
+      data: { parentItemId: mischpultItem.id },
+    });
+  }
 
   for (let i = 1; i <= 5; i++) {
     const inventoryNumber = `INV-KABEL-${String(i).padStart(3, '0')}`;
-    await prisma.inventoryItem.upsert({
-      where: { inventoryNumber },
-      update: {},
-      create: {
-        articleId: stromkabel.id,
-        locationId: gemeindehaus.id,
-        roomId: lager1.id,
-        ownerOrganizationId: orgA.id,
-        ownerUnitId: unitTechnik.id,
-        inventoryNumber,
-        status: 'available',
-      },
+    await upsertInventoryItemByNumber(inventoryNumber, {
+      articleId: stromkabel.id,
+      locationId: gemeindehaus.id,
+      roomId: lager1.id,
+      ownerOrganizationId: orgA.id,
+      ownerUnitId: unitTechnik.id,
+      inventoryNumber,
+      status: 'available',
     });
   }
   for (let i = 1; i <= 3; i++) {
     const inventoryNumber = `INV-KABEL-B-${String(i).padStart(3, '0')}`;
-    await prisma.inventoryItem.upsert({
-      where: { inventoryNumber },
-      update: {},
-      create: {
-        articleId: stromkabel.id,
-        locationId: aussenlager.id,
-        roomId: halle.id,
+    await upsertInventoryItemByNumber(inventoryNumber, {
+      articleId: stromkabel.id,
+      locationId: aussenlager.id,
+      roomId: halle.id,
+      ownerOrganizationId: orgB.id,
+      ownerUnitId: unitJugend.id,
+      inventoryNumber,
+      status: 'available',
+    });
+  }
+
+  await upsertInventoryItemByNumber('INV-TAPE-001', {
+    articleId: gaffaTape.id,
+    locationId: gemeindehaus.id,
+    roomId: lager1.id,
+    ownerOrganizationId: orgB.id,
+    ownerUnitId: unitJugend.id,
+    inventoryNumber: 'INV-TAPE-001',
+    status: 'available',
+  });
+  await upsertInventoryItemByNumber('INV-TAPE-002', {
+    articleId: gaffaTape.id,
+    locationId: gemeindehaus.id,
+    roomId: lager1.id,
+    ownerOrganizationId: orgB.id,
+    ownerUnitId: unitJugend.id,
+    inventoryNumber: 'INV-TAPE-002',
+    status: 'available',
+  });
+  // Inventory numbers are optional now - one unlabeled item to demonstrate that.
+  const unlabeledExists = await prisma.inventoryItem.findFirst({
+    where: { articleId: gaffaTape.id, inventoryNumber: null },
+  });
+  if (!unlabeledExists) {
+    await prisma.inventoryItem.create({
+      data: {
+        articleId: gaffaTape.id,
+        locationId: gemeindehaus.id,
+        roomId: lager1.id,
         ownerOrganizationId: orgB.id,
         ownerUnitId: unitJugend.id,
-        inventoryNumber,
         status: 'available',
       },
     });
   }
-
-  await prisma.inventoryItem.upsert({
-    where: { inventoryNumber: 'INV-TAPE-001' },
-    update: {},
-    create: {
-      articleId: gaffaTape.id,
-      locationId: gemeindehaus.id,
-      roomId: lager1.id,
-      ownerOrganizationId: orgB.id,
-      ownerUnitId: unitJugend.id,
-      inventoryNumber: 'INV-TAPE-001',
-      status: 'available',
-      conditionPercent: 100,
-    },
-  });
-  await prisma.inventoryItem.upsert({
-    where: { inventoryNumber: 'INV-TAPE-002' },
-    update: {},
-    create: {
-      articleId: gaffaTape.id,
-      locationId: gemeindehaus.id,
-      roomId: lager1.id,
-      ownerOrganizationId: orgB.id,
-      ownerUnitId: unitJugend.id,
-      inventoryNumber: 'INV-TAPE-002',
-      status: 'available',
-      conditionPercent: 60,
-    },
-  });
 
   console.log('Seeding groups...');
   const groupVorstand = await prisma.group.upsert({
@@ -254,7 +294,9 @@ async function main() {
   });
 
   console.log('Seeding admin user...');
-  const adminEmail = process.env.ADMIN_EMAIL ?? 'admin@example.com';
+  const adminEmail = (process.env.ADMIN_EMAIL ?? 'admin@example.com')
+    .trim()
+    .toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD ?? 'ChangeMe123!';
   const adminDisplayName = process.env.ADMIN_DISPLAY_NAME ?? 'System Administrator';
 

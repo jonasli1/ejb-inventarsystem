@@ -3,22 +3,14 @@ import { InventoryStatus } from '@prisma/client';
 import {
   IsDateString,
   IsIn,
-  IsInt,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
-  Max,
   Min,
   MinLength,
 } from 'class-validator';
-
-// `borrowed` is only ever set by the loan workflow (checkout/return), never
-// through a direct create/update call — otherwise an item could be marked
-// "borrowed" without an actual loan record behind it.
-export const MANUALLY_ASSIGNABLE_INVENTORY_STATUSES = Object.values(
-  InventoryStatus,
-).filter((status) => status !== InventoryStatus.borrowed);
+import { MANUALLY_ASSIGNABLE_INVENTORY_STATUSES } from '../inventory-status';
 
 export class CreateInventoryItemDto {
   @ApiProperty()
@@ -45,7 +37,8 @@ export class CreateInventoryItemDto {
   ownerUnitId: string;
 
   @ApiPropertyOptional({
-    description: 'Unique inventory number. Auto-generated when omitted.',
+    description:
+      'Inventory number. Optional and never auto-generated; case-insensitively unique among non-retired items only - freed up again once an item is retired.',
   })
   @IsOptional()
   @IsString()
@@ -67,17 +60,6 @@ export class CreateInventoryItemDto {
   @IsString()
   serialNumber?: string;
 
-  @ApiPropertyOptional({
-    minimum: 1,
-    maximum: 100,
-    description: 'Only allowed for CONSUMABLE articles.',
-  })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  conditionPercent?: number;
-
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -92,9 +74,16 @@ export class CreateInventoryItemDto {
   purchasePrice?: number;
 
   @ApiPropertyOptional({
-    description: 'Purchase date. Defaults to today when omitted.',
+    description: 'Purchase date. Optional, left empty when omitted.',
   })
   @IsOptional()
   @IsDateString()
   purchaseDate?: string;
+
+  @ApiPropertyOptional({
+    description: 'Date of the next scheduled DGUV V3 electrical safety check.',
+  })
+  @IsOptional()
+  @IsDateString()
+  nextDguvV3Check?: string;
 }

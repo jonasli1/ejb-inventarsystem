@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AppNotFoundException } from '../common/exceptions/app.exception';
 import { CreateLoanTemplateDto } from './dto/create-loan-template.dto';
 
 const TEMPLATE_INCLUDE = {
@@ -27,7 +28,8 @@ export class LoanTemplatesService {
       where: { id },
       include: TEMPLATE_INCLUDE,
     });
-    if (!template) throw new NotFoundException('Loan template not found.');
+    if (!template)
+      throw new AppNotFoundException('Ausleihe-Vorlage nicht gefunden.');
     return template;
   }
 

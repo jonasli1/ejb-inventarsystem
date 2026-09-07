@@ -13,6 +13,7 @@ describe('ArticlesService', () => {
       count: jest.Mock;
     };
     inventoryItem: { groupBy: jest.Mock; count: jest.Mock };
+    $queryRaw: jest.Mock;
     $transaction: jest.Mock;
   };
   let audit: { log: jest.Mock };
@@ -29,6 +30,7 @@ describe('ArticlesService', () => {
         groupBy: jest.fn().mockResolvedValue([]),
         count: jest.fn(),
       },
+      $queryRaw: jest.fn().mockResolvedValue([]),
       $transaction: jest
         .fn()
         .mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
@@ -41,7 +43,7 @@ describe('ArticlesService', () => {
   });
 
   describe('findAll', () => {
-    it('builds a full-text OR filter across name, manufacturer, description and category name', async () => {
+    it('builds a full-text OR filter across name, manufacturer, description, category name and aliases', async () => {
       await service.findAll({ search: 'Kabel' });
       expect(prisma.article.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -59,22 +61,29 @@ describe('ArticlesService', () => {
       );
     });
 
+    it('includes alias-matched article ids when the raw alias query finds hits', async () => {
+      prisma.$queryRaw.mockResolvedValue([{ id: 'article-alias-1' }]);
+      await service.findAll({ search: 'Beamer' });
+      const call = prisma.article.findMany.mock.calls[0][0];
+      expect(call.where.OR).toContainEqual({
+        id: { in: ['article-alias-1'] },
+      });
+    });
+
     it('omits the OR filter entirely when no search term is given', async () => {
-      await service.findAll({ type: 'UNIQUE' });
+      await service.findAll({ categoryId: 'cat-1' });
       const call = prisma.article.findMany.mock.calls[0][0];
       expect(call.where.OR).toBeUndefined();
     });
 
-    it('combines search with type/category filters', async () => {
+    it('combines search with the category filter', async () => {
       await service.findAll({
         search: 'Akku',
-        type: 'CONSUMABLE',
         categoryId: 'cat-1',
       });
       expect(prisma.article.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            type: 'CONSUMABLE',
             categoryId: 'cat-1',
             OR: expect.any(Array),
           }),

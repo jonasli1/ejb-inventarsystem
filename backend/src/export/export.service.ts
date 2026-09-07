@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { AppNotFoundException } from '../common/exceptions/app.exception';
 import ExcelJS from 'exceljs';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -62,7 +63,7 @@ export class ExportService {
         items: { include: { inventoryItem: { include: { article: true } } } },
       },
     });
-    if (!loan) throw new NotFoundException('Loan not found.');
+    if (!loan) throw new AppNotFoundException('Ausleihe nicht gefunden.');
 
     const borrower = loan.borrowerName ?? loan.borrowerPersonId ?? '–';
     const meta = [
@@ -249,7 +250,7 @@ export class ExportService {
       where: { id, deletedAt: null },
       include: INVENTORY_ITEM_EXPORT_INCLUDE,
     });
-    if (!item) throw new NotFoundException('Inventory item not found.');
+    if (!item) throw new AppNotFoundException('Inventarobjekt nicht gefunden.');
 
     const movements = await this.prisma.stockMovement.findMany({
       where: { inventoryItemId: id },
@@ -262,7 +263,7 @@ export class ExportService {
     });
 
     const meta = [
-      { label: 'Inventarnummer', value: item.inventoryNumber },
+      { label: 'Inventarnummer', value: item.inventoryNumber ?? '–' },
       { label: 'Artikel', value: item.article.name },
       {
         label: 'Status',
@@ -294,11 +295,11 @@ export class ExportService {
       user: m.user?.displayName ?? '',
     }));
 
-    const filename = `Inventarobjekt-${slug(item.inventoryNumber)}`;
+    const filename = `Inventarobjekt-${slug(item.inventoryNumber ?? item.id)}`;
 
     if (format === 'pdf') {
       const buffer = await renderPdf(
-        `Inventarobjekt: ${item.inventoryNumber}`,
+        `Inventarobjekt: ${item.inventoryNumber ?? item.id}`,
         meta,
         [{ title: 'Aktivitäten', columns, rows }],
       );
@@ -352,7 +353,7 @@ export class ExportService {
       orderBy: { name: 'asc' },
     });
     if (articleIds?.length && articles.length === 0) {
-      throw new NotFoundException('No matching articles found.');
+      throw new AppNotFoundException('Keine passenden Artikel gefunden.');
     }
 
     const units = await this.prisma.inventoryItem.findMany({
@@ -378,9 +379,8 @@ export class ExportService {
     }
 
     const articleColumns: PdfColumn[] = [
-      { header: 'Name', key: 'name', width: 160 },
-      { header: 'Typ', key: 'type', width: 100 },
-      { header: 'Kategorie', key: 'category', width: 120 },
+      { header: 'Name', key: 'name', width: 180 },
+      { header: 'Kategorie', key: 'category', width: 130 },
       { header: 'Bestand gesamt', key: 'total', width: 90 },
       { header: 'Verfügbar', key: 'available', width: 90 },
       { header: 'Ausgeliehen', key: 'borrowed', width: 90 },
@@ -389,7 +389,6 @@ export class ExportService {
       const c = counts.get(a.id) ?? { total: 0, available: 0, borrowed: 0 };
       return {
         name: a.name,
-        type: a.type,
         category: a.category?.name ?? '',
         total: c.total,
         available: c.available,
