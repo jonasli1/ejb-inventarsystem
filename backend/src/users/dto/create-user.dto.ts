@@ -6,9 +6,11 @@ import {
   IsString,
   MinLength,
 } from 'class-validator';
+import { NormalizeEmail } from '../../common/utils/normalize-email';
 
 export class CreateUserDto {
   @ApiProperty()
+  @NormalizeEmail()
   @IsEmail()
   email: string;
 

@@ -98,6 +98,41 @@ describe('Inventarsystem API (e2e)', () => {
       expect(res.body.refreshToken).toBeDefined();
     });
 
+    it('logs in regardless of the email address casing/whitespace used', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: '  Admin@Example.COM  ', password: 'AdminPass123!' })
+        .expect(201);
+
+      expect(res.body.accessToken).toBeDefined();
+    });
+
+    it('creates a user with a mixed-case email as lowercase, and can log in with any casing', async () => {
+      const adminLogin = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+
+      const created = await request(app.getHttpServer())
+        .post('/api/v1/users')
+        .set('Authorization', `Bearer ${adminLogin.body.accessToken}`)
+        .send({
+          email: 'MixedCase.User@Example.com',
+          displayName: 'Mixed Case User',
+          password: 'MixedCasePass123!',
+        })
+        .expect(201);
+      expect(created.body.email).toBe('mixedcase.user@example.com');
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({
+          email: 'mixedcase.USER@EXAMPLE.com',
+          password: 'MixedCasePass123!',
+        })
+        .expect(201);
+    });
+
     it('rejects a low-privilege user on an admin-only route (403)', async () => {
       const login = await request(app.getHttpServer())
         .post('/api/v1/auth/login')

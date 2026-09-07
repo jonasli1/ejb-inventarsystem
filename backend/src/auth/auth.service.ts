@@ -20,6 +20,7 @@ import { GroupsService } from '../groups/groups.service';
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../notifications/email.service';
 import { AppSettingsService } from '../settings/app-settings.service';
+import { normalizeEmail } from '../common/utils/normalize-email';
 import {
   ChurchToolsService,
   ChurchToolsProfile,
@@ -377,6 +378,14 @@ export class AuthService {
   private async upsertChurchToolsUser(
     profile: ChurchToolsProfile,
   ): Promise<User> {
+    // ChurchTools may return the email in whatever casing the person used
+    // when registering there; normalize it up front so it matches what we
+    // store for local accounts and doesn't create a duplicate on re-login.
+    profile = {
+      ...profile,
+      email: profile.email ? normalizeEmail(profile.email) : profile.email,
+    };
+
     const existingIdentity = await this.prisma.authIdentity.findUnique({
       where: {
         provider_providerSubject: {

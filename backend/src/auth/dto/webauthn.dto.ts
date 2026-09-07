@@ -4,6 +4,7 @@ import type {
   AuthenticationResponseJSON,
   RegistrationResponseJSON,
 } from '@simplewebauthn/server';
+import { NormalizeEmail } from '../../common/utils/normalize-email';
 
 export class PasskeyRegisterVerifyDto {
   @ApiProperty()
@@ -23,6 +24,7 @@ export class PasskeyRegisterVerifyDto {
 export class PasskeyLoginOptionsDto {
   @ApiProperty({ required: false })
   @IsOptional()
+  @NormalizeEmail()
   @IsEmail()
   email?: string;
 }
