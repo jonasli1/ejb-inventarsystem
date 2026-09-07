@@ -15,11 +15,21 @@ const ROLE_DEFINITIONS: { name: string; description: string; permissionKeys: str
     name: 'Lagerwart',
     description: 'Manages inventory, locations, articles and loans (own organization)',
     permissionKeys: [
-      'inventory.manage',
-      'inventory.view',
-      'inventory.change_inv_num',
-      'locations.manage',
-      'articles.manage',
+      'inventory.read',
+      'inventory.create',
+      'inventory.update',
+      'inventory.delete',
+      'inventory.retire',
+      'inventory.change_inventory_number',
+      'locations.read',
+      'locations.create',
+      'locations.update',
+      'locations.delete',
+      'articles.read',
+      'articles.create',
+      'articles.update',
+      'articles.delete',
+      'organizations.read',
       'loans.create',
       'loans.manage',
       'loans.spend',
@@ -29,12 +39,25 @@ const ROLE_DEFINITIONS: { name: string; description: string; permissionKeys: str
   {
     name: 'Ausleiher',
     description: 'Can create loans and view inventory',
-    permissionKeys: ['loans.create', 'inventory.view'],
+    permissionKeys: [
+      'loans.create',
+      'inventory.read',
+      'articles.read',
+      'locations.read',
+      'organizations.read',
+    ],
   },
   {
     name: 'Betrachter',
     description: 'Read-only access',
-    permissionKeys: ['inventory.view', 'loans.view', 'reports.view'],
+    permissionKeys: [
+      'inventory.read',
+      'articles.read',
+      'locations.read',
+      'organizations.read',
+      'loans.read',
+      'reports.view',
+    ],
   },
 ];
 
@@ -56,8 +79,12 @@ async function main() {
     ALL_PERMISSIONS.map((p) =>
       prisma.permission.upsert({
         where: { key: p.key },
-        update: { description: p.description },
-        create: { key: p.key, description: p.description },
+        update: { displayName: p.displayName, description: p.description },
+        create: {
+          key: p.key,
+          displayName: p.displayName,
+          description: p.description,
+        },
       }),
     ),
   );

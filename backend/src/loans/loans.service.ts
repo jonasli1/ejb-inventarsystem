@@ -142,7 +142,7 @@ export class LoansService {
   ): void {
     if (loan.lentByUserId === user.id) return;
     const hasViewTier = [
-      PERMISSIONS.LOANS_VIEW,
+      PERMISSIONS.LOANS_READ,
       PERMISSIONS.LOANS_MANAGE,
       PERMISSIONS.LOANS_SPEND,
       PERMISSIONS.LOANS_ADMINISTER,

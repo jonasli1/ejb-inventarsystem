@@ -15,14 +15,14 @@ import { QueryActivityDto } from './dto/query-activity.dto';
 export class ActivityController {
   constructor(private readonly activityService: ActivityService) {}
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.INVENTORY_READ)
   @Get()
   findAll(
     @Query() query: QueryActivityDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     const canViewLoans =
-      user.permissions.includes(PERMISSIONS.LOANS_VIEW) ||
+      user.permissions.includes(PERMISSIONS.LOANS_READ) ||
       user.permissions.includes(PERMISSIONS.LOANS_MANAGE) ||
       user.permissions.includes(PERMISSIONS.LOANS_ADMINISTER);
     return this.activityService.findAll(query, canViewLoans);

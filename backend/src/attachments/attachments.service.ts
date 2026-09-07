@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AttachmentCategory, AttachmentEntityType } from '@prisma/client';
 import * as crypto from 'node:crypto';
@@ -12,6 +7,11 @@ import * as path from 'node:path';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { PERMISSIONS } from '../common/constants/permissions';
+import {
+  AppBadRequestException,
+  AppForbiddenException,
+  AppNotFoundException,
+} from '../common/exceptions/app.exception';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
 const CATEGORIES_BY_ENTITY: Record<AttachmentEntityType, AttachmentCategory[]> =
@@ -78,8 +78,9 @@ export class AttachmentsService {
     category: AttachmentCategory,
   ) {
     if (!CATEGORIES_BY_ENTITY[entityType].includes(category)) {
-      throw new BadRequestException(
-        `Category "${category}" is not valid for entity type "${entityType}".`,
+      throw new AppBadRequestException(
+        `Die Kategorie "${category}" ist für den Entitätstyp "${entityType}" nicht gültig.`,
+        'INVALID_ATTACHMENT_CATEGORY',
       );
     }
   }
@@ -94,24 +95,25 @@ export class AttachmentsService {
     if (entityType === AttachmentEntityType.article) {
       allowed =
         mode === 'write'
-          ? has(PERMISSIONS.ARTICLES_MANAGE)
-          : has(PERMISSIONS.INVENTORY_VIEW);
+          ? has(PERMISSIONS.ARTICLES_UPDATE)
+          : has(PERMISSIONS.ARTICLES_READ);
     } else if (entityType === AttachmentEntityType.inventoryItem) {
       allowed =
         mode === 'write'
-          ? has(PERMISSIONS.INVENTORY_MANAGE)
-          : has(PERMISSIONS.INVENTORY_VIEW);
+          ? has(PERMISSIONS.INVENTORY_UPDATE)
+          : has(PERMISSIONS.INVENTORY_READ);
     } else if (entityType === AttachmentEntityType.loanItem) {
       const manageOrAdminister =
         has(PERMISSIONS.LOANS_MANAGE) || has(PERMISSIONS.LOANS_ADMINISTER);
       allowed =
         mode === 'write'
           ? manageOrAdminister
-          : manageOrAdminister || has(PERMISSIONS.LOANS_VIEW);
+          : manageOrAdminister || has(PERMISSIONS.LOANS_READ);
     }
     if (!allowed) {
-      throw new ForbiddenException(
-        'You do not have permission to access these attachments.',
+      throw new AppForbiddenException(
+        'Sie haben keine Berechtigung, auf diese Anhänge zuzugreifen.',
+        'MISSING_PERMISSION',
       );
     }
   }
@@ -137,7 +139,8 @@ export class AttachmentsService {
         select: { id: true },
       }));
     }
-    if (!exists) throw new NotFoundException('Target entity not found.');
+    if (!exists)
+      throw new AppNotFoundException('Zielobjekt nicht gefunden.');
   }
 
   async list(
@@ -168,25 +171,38 @@ export class AttachmentsService {
     await this.assertEntityExists(entityType, entityId);
 
     if (!file || !file.buffer?.length) {
-      throw new BadRequestException('No file uploaded.');
+      throw new AppBadRequestException(
+        'Es wurde keine Datei hochgeladen.',
+        'NO_FILE_UPLOADED',
+      );
     }
 
     if (isImageCategory(category)) {
       if (!IMAGE_MIME_TYPES.has(file.mimetype)) {
-        throw new BadRequestException(
-          'Only JPEG, PNG, WebP or GIF images are allowed here.',
+        throw new AppBadRequestException(
+          'Nur JPEG-, PNG-, WebP- oder GIF-Bilder sind hier erlaubt.',
+          'INVALID_FILE_TYPE',
         );
       }
       if (file.size > IMAGE_MAX_BYTES) {
-        throw new BadRequestException('Image exceeds the 8 MB size limit.');
+        throw new AppBadRequestException(
+          'Das Bild überschreitet die maximale Größe von 8 MB.',
+          'FILE_TOO_LARGE',
+        );
       }
     } else {
       const ext = path.extname(file.originalname).toLowerCase();
       if (BLOCKED_DOCUMENT_EXTENSIONS.has(ext)) {
-        throw new BadRequestException(`File type "${ext}" is not allowed.`);
+        throw new AppBadRequestException(
+          `Der Dateityp "${ext}" ist nicht erlaubt.`,
+          'INVALID_FILE_TYPE',
+        );
       }
       if (file.size > DOCUMENT_MAX_BYTES) {
-        throw new BadRequestException('File exceeds the 25 MB size limit.');
+        throw new AppBadRequestException(
+          'Die Datei überschreitet die maximale Größe von 25 MB.',
+          'FILE_TOO_LARGE',
+        );
       }
     }
 
@@ -236,7 +252,7 @@ export class AttachmentsService {
     const attachment = await this.prisma.attachment.findFirst({
       where: { id, deletedAt: null },
     });
-    if (!attachment) throw new NotFoundException('Attachment not found.');
+    if (!attachment) throw new AppNotFoundException('Anhang nicht gefunden.');
     return attachment;
   }
 
@@ -246,7 +262,7 @@ export class AttachmentsService {
     try {
       await fs.access(absolutePath);
     } catch {
-      throw new NotFoundException('Attachment file is missing on disk.');
+      throw new AppNotFoundException('Die Anhang-Datei fehlt auf dem Server.');
     }
     return attachment;
   }
@@ -259,7 +275,7 @@ export class AttachmentsService {
     const attachment = await this.prisma.attachment.findFirst({
       where: { id, deletedAt: null },
     });
-    if (!attachment) throw new NotFoundException('Attachment not found.');
+    if (!attachment) throw new AppNotFoundException('Anhang nicht gefunden.');
     await this.prisma.attachment.update({
       where: { id },
       data: { deletedAt: new Date() },

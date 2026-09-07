@@ -29,19 +29,19 @@ import { UpdateOrganizationDto } from './dto/update-organization.dto';
 export class OrganizationsController {
   constructor(private readonly organizationsService: OrganizationsService) {}
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_READ)
   @Get()
   findAll(@Query() query: PaginationQueryDto) {
     return this.organizationsService.findAll(query);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_READ)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.organizationsService.findOne(id);
   }
 
-  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_MANAGE)
+  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_CREATE)
   @Post()
   create(
     @Body() dto: CreateOrganizationDto,
@@ -50,7 +50,7 @@ export class OrganizationsController {
     return this.organizationsService.create(dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_MANAGE)
+  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_UPDATE)
   @Put(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -60,7 +60,7 @@ export class OrganizationsController {
     return this.organizationsService.update(id, dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_MANAGE)
+  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async remove(

@@ -2,13 +2,18 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, Matches } from 'class-validator';
 
 export class CreatePermissionDto {
-  @ApiProperty({ example: 'inventory.manage' })
+  @ApiProperty({ example: 'inventory.update' })
   @IsString()
-  @Matches(/^[a-z]+\.[a-z]+$/, {
+  @Matches(/^[a-z]+\.[a-z_]+$/, {
     message:
-      'key must be in the form "resource.action", e.g. "inventory.manage"',
+      'key muss dem Format "ressource.aktion" entsprechen, z. B. "inventory.update"',
   })
   key: string;
+
+  @ApiPropertyOptional({ example: 'Inventarobjekte bearbeiten' })
+  @IsOptional()
+  @IsString()
+  displayName?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

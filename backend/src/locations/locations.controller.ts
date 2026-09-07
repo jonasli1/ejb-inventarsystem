@@ -27,19 +27,19 @@ import { UpdateLocationDto } from './dto/update-location.dto';
 export class LocationsController {
   constructor(private readonly locationsService: LocationsService) {}
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.LOCATIONS_READ)
   @Get()
   findAll() {
     return this.locationsService.findAll();
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.LOCATIONS_READ)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.locationsService.findOne(id);
   }
 
-  @RequirePermissions(PERMISSIONS.LOCATIONS_MANAGE)
+  @RequirePermissions(PERMISSIONS.LOCATIONS_CREATE)
   @Post()
   create(
     @Body() dto: CreateLocationDto,
@@ -48,7 +48,7 @@ export class LocationsController {
     return this.locationsService.create(dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.LOCATIONS_MANAGE)
+  @RequirePermissions(PERMISSIONS.LOCATIONS_UPDATE)
   @Put(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -58,7 +58,7 @@ export class LocationsController {
     return this.locationsService.update(id, dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.LOCATIONS_MANAGE)
+  @RequirePermissions(PERMISSIONS.LOCATIONS_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async remove(

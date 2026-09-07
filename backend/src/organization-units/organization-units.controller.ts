@@ -23,13 +23,13 @@ import { UpdateOrganizationUnitDto } from './dto/update-organization-unit.dto';
 export class OrganizationUnitsController {
   constructor(private readonly unitsService: OrganizationUnitsService) {}
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_READ)
   @Get()
   findAll(@Param('organizationId', ParseUUIDPipe) organizationId: string) {
     return this.unitsService.findAll(organizationId);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_READ)
   @Get(':id')
   findOne(
     @Param('organizationId', ParseUUIDPipe) organizationId: string,
@@ -38,7 +38,7 @@ export class OrganizationUnitsController {
     return this.unitsService.findOne(organizationId, id);
   }
 
-  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_MANAGE)
+  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_CREATE)
   @Post()
   create(
     @Param('organizationId', ParseUUIDPipe) organizationId: string,
@@ -47,7 +47,7 @@ export class OrganizationUnitsController {
     return this.unitsService.create(organizationId, dto);
   }
 
-  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_MANAGE)
+  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_UPDATE)
   @Put(':id')
   update(
     @Param('organizationId', ParseUUIDPipe) organizationId: string,
@@ -57,7 +57,7 @@ export class OrganizationUnitsController {
     return this.unitsService.update(organizationId, id, dto);
   }
 
-  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_MANAGE)
+  @RequirePermissions(PERMISSIONS.ORGANIZATIONS_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async remove(

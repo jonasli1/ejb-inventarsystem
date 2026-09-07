@@ -82,6 +82,7 @@ describe('LoansService', () => {
       loan: {
         findFirst: jest.fn(),
         update: jest.fn().mockResolvedValue({}),
+        delete: jest.fn().mockResolvedValue({}),
       },
       loanBlackoutPeriod: {
         findFirst: jest.fn().mockResolvedValue(null), // no blackout conflict by default
@@ -531,13 +532,13 @@ describe('LoansService', () => {
       );
     });
 
-    it('lets a loans.view holder view any loan', async () => {
+    it('lets a loans.read holder view any loan', async () => {
       prisma.loan.findFirst.mockResolvedValue(loanRow);
       const viewUser: AuthenticatedUser = {
         id: 'someone-else',
         email: 'viewer@example.com',
         displayName: 'Viewer',
-        permissions: ['loans.view'],
+        permissions: ['loans.read'],
       };
       await expect(service.findOne('loan-1', viewUser)).resolves.toEqual(
         loanRow,
@@ -1095,6 +1096,24 @@ describe('LoansService', () => {
         }),
       );
       expect(email.notifyEvent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('remove', () => {
+    it('hard-deletes the loan', async () => {
+      prisma.loan.findFirst.mockResolvedValue({ id: 'loan-1' });
+      await service.remove('loan-1');
+      expect(prisma.loan.delete).toHaveBeenCalledWith({
+        where: { id: 'loan-1' },
+      });
+    });
+
+    it('throws NotFoundException for an unknown loan', async () => {
+      prisma.loan.findFirst.mockResolvedValue(null);
+      await expect(service.remove('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.loan.delete).not.toHaveBeenCalled();
     });
   });
 });

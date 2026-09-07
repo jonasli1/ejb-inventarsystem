@@ -1,7 +1,8 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate } from '../common/dto/pagination-query.dto';
+import { AppForbiddenException } from '../common/exceptions/app.exception';
 import {
   describeMovement,
   MOVEMENT_TYPE_LABEL,
@@ -49,8 +50,9 @@ export class ActivityService {
 
   async findAll(query: QueryActivityDto, canViewLoans: boolean) {
     if (query.loanId && !canViewLoans) {
-      throw new ForbiddenException(
-        'Missing required permission(s): one of loans.view, loans.manage',
+      throw new AppForbiddenException(
+        'Fehlende Berechtigung(en): eine von loans.read, loans.manage.',
+        'MISSING_PERMISSION',
       );
     }
 

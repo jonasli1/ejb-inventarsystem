@@ -33,25 +33,25 @@ import { ChangeEmailDto } from './dto/change-email.dto';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @RequirePermissions(PERMISSIONS.USERS_MANAGE)
+  @RequirePermissions(PERMISSIONS.USERS_READ)
   @Get()
   findAll(@Query() query: PaginationQueryDto) {
     return this.usersService.findAll(query);
   }
 
-  @RequirePermissions(PERMISSIONS.USERS_MANAGE)
+  @RequirePermissions(PERMISSIONS.USERS_READ)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.findOne(id);
   }
 
-  @RequirePermissions(PERMISSIONS.USERS_MANAGE)
+  @RequirePermissions(PERMISSIONS.USERS_CREATE)
   @Post()
   create(@Body() dto: CreateUserDto, @CurrentUser() user: AuthenticatedUser) {
     return this.usersService.create(dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.USERS_MANAGE)
+  @RequirePermissions(PERMISSIONS.USERS_UPDATE)
   @Put(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -61,7 +61,7 @@ export class UsersController {
     return this.usersService.update(id, dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.USERS_MANAGE)
+  @RequirePermissions(PERMISSIONS.USERS_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async remove(
@@ -111,13 +111,13 @@ export class UsersController {
     await this.usersService.removeRole(id, roleId);
   }
 
-  @RequirePermissions(PERMISSIONS.USERS_MANAGE)
+  @RequirePermissions(PERMISSIONS.USERS_READ)
   @Get(':id/groups')
   listGroups(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.listGroups(id);
   }
 
-  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @RequirePermissions(PERMISSIONS.GROUPS_UPDATE)
   @Post(':id/groups')
   assignGroup(
     @Param('id', ParseUUIDPipe) id: string,
@@ -126,7 +126,7 @@ export class UsersController {
     return this.usersService.assignGroup(id, dto.groupId);
   }
 
-  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @RequirePermissions(PERMISSIONS.GROUPS_UPDATE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id/groups/:groupId')
   async removeGroup(

@@ -23,25 +23,25 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.ARTICLES_READ)
   @Get()
   findAll() {
     return this.categoriesService.findAll();
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.ARTICLES_READ)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.categoriesService.findOne(id);
   }
 
-  @RequirePermissions(PERMISSIONS.ARTICLES_MANAGE)
+  @RequirePermissions(PERMISSIONS.ARTICLES_CREATE)
   @Post()
   create(@Body() dto: CreateCategoryDto) {
     return this.categoriesService.create(dto);
   }
 
-  @RequirePermissions(PERMISSIONS.ARTICLES_MANAGE)
+  @RequirePermissions(PERMISSIONS.ARTICLES_UPDATE)
   @Put(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -50,7 +50,7 @@ export class CategoriesController {
     return this.categoriesService.update(id, dto);
   }
 
-  @RequirePermissions(PERMISSIONS.ARTICLES_MANAGE)
+  @RequirePermissions(PERMISSIONS.ARTICLES_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async remove(@Param('id', ParseUUIDPipe) id: string) {

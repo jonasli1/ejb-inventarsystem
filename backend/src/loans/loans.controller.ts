@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
@@ -13,7 +16,10 @@ import {
   CurrentUser,
   type AuthenticatedUser,
 } from '../common/decorators/current-user.decorator';
-import { RequireAnyPermission } from '../common/decorators/permissions.decorator';
+import {
+  RequireAnyPermission,
+  RequirePermissions,
+} from '../common/decorators/permissions.decorator';
 import { PERMISSIONS } from '../common/constants/permissions';
 import { LoansService } from './loans.service';
 import { CreateLoanDto } from './dto/create-loan.dto';
@@ -25,7 +31,7 @@ import { QueryLoanDto } from './dto/query-loan.dto';
 import { CalendarQueryDto } from './dto/calendar-query.dto';
 
 const VIEW_OR_ABOVE = [
-  PERMISSIONS.LOANS_VIEW,
+  PERMISSIONS.LOANS_READ,
   PERMISSIONS.LOANS_MANAGE,
   PERMISSIONS.LOANS_SPEND,
   PERMISSIONS.LOANS_ADMINISTER,
@@ -130,5 +136,12 @@ export class LoansController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.loansService.returnLoan(id, dto, user);
+  }
+
+  @RequirePermissions(PERMISSIONS.LOANS_DELETE)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Delete(':id')
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
+    await this.loansService.remove(id);
   }
 }

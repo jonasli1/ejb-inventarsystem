@@ -201,6 +201,8 @@ model Role {
 model Permission {
   id          String   @id @default(uuid())
   key         String   @unique
+  // German UI label, e.g. "Inventarobjekte ausmustern" for inventory.retire.
+  displayName String   @default("") @map("display_name")
   description String?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

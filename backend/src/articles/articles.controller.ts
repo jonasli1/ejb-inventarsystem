@@ -29,25 +29,25 @@ import { QueryArticleDto } from './dto/query-article.dto';
 export class ArticlesController {
   constructor(private readonly articlesService: ArticlesService) {}
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.ARTICLES_READ)
   @Get()
   findAll(@Query() query: QueryArticleDto) {
     return this.articlesService.findAll(query);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.ARTICLES_READ)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.articlesService.findOne(id);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.ARTICLES_READ)
   @Get(':id/units')
   getUnits(@Param('id', ParseUUIDPipe) id: string) {
     return this.articlesService.getUnits(id);
   }
 
-  @RequirePermissions(PERMISSIONS.ARTICLES_MANAGE)
+  @RequirePermissions(PERMISSIONS.ARTICLES_CREATE)
   @Post()
   create(
     @Body() dto: CreateArticleDto,
@@ -56,7 +56,7 @@ export class ArticlesController {
     return this.articlesService.create(dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.ARTICLES_MANAGE)
+  @RequirePermissions(PERMISSIONS.ARTICLES_UPDATE)
   @Put(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -66,7 +66,7 @@ export class ArticlesController {
     return this.articlesService.update(id, dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.ARTICLES_MANAGE)
+  @RequirePermissions(PERMISSIONS.ARTICLES_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async remove(

@@ -28,25 +28,25 @@ import { AssignPermissionDto } from './dto/assign-permission.dto';
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
-  @RequirePermissions(PERMISSIONS.ROLES_MANAGE)
+  @RequirePermissions(PERMISSIONS.ROLES_READ)
   @Get()
   findAll() {
     return this.rolesService.findAll();
   }
 
-  @RequirePermissions(PERMISSIONS.ROLES_MANAGE)
+  @RequirePermissions(PERMISSIONS.ROLES_READ)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.rolesService.findOne(id);
   }
 
-  @RequirePermissions(PERMISSIONS.ROLES_MANAGE)
+  @RequirePermissions(PERMISSIONS.ROLES_CREATE)
   @Post()
   create(@Body() dto: CreateRoleDto, @CurrentUser() user: AuthenticatedUser) {
     return this.rolesService.create(dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.ROLES_MANAGE)
+  @RequirePermissions(PERMISSIONS.ROLES_UPDATE)
   @Put(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -56,7 +56,7 @@ export class RolesController {
     return this.rolesService.update(id, dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.ROLES_MANAGE)
+  @RequirePermissions(PERMISSIONS.ROLES_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async remove(

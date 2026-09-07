@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -22,6 +21,7 @@ import { AttachmentEntityType } from '@prisma/client';
 import { createReadStream } from 'node:fs';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { AppBadRequestException } from '../common/exceptions/app.exception';
 import { AttachmentsService } from './attachments.service';
 import { UploadAttachmentDto } from './dto/upload-attachment.dto';
 import { QueryAttachmentDto } from './dto/query-attachment.dto';
@@ -32,7 +32,10 @@ function parseEntityType(value: string): AttachmentEntityType {
   if (
     !Object.values(AttachmentEntityType).includes(value as AttachmentEntityType)
   ) {
-    throw new BadRequestException(`Unknown entity type "${value}".`);
+    throw new AppBadRequestException(
+      `Unbekannter Entitätstyp "${value}".`,
+      'INVALID_ENTITY_TYPE',
+    );
   }
   return value as AttachmentEntityType;
 }
@@ -86,8 +89,10 @@ export class AttachmentsController {
   async download(
     @Param('id') id: string,
     @Res({ passthrough: true }) res: Response,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     const attachment = await this.attachments.getFileForDownload(id);
+    this.attachments.assertPermission(attachment.entityType, user, 'read');
     res.set({
       'Content-Type': attachment.mimeType,
       'Content-Disposition': `attachment; filename="${encodeURIComponent(attachment.fileName)}"`,

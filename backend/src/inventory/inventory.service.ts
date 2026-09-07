@@ -18,15 +18,17 @@ import { QueryInventoryItemDto } from './dto/query-inventory-item.dto';
 import { AccessoryCandidatesQueryDto } from './dto/accessory-candidates-query.dto';
 import { assertValidStatusTransition } from './inventory-status';
 
-// Fields UpdateInventoryItemDto carries besides inventoryNumber - gated by
-// inventory.manage. Kept as an explicit list (rather than inferred from the
-// DTO instance) so the manage-permission check is a simple, robust presence
-// check, not a value-diffing comparison against Prisma's Decimal/Date types.
+// Fields UpdateInventoryItemDto carries besides inventoryNumber and status -
+// gated by inventory.update. Kept as an explicit list (rather than inferred
+// from the DTO instance) so the permission check is a simple, robust
+// presence check, not a value-diffing comparison against Prisma's
+// Decimal/Date types. `status` is handled separately below: transitioning
+// TO "retired" needs inventory.retire specifically, any other status change
+// needs inventory.update, matching "ausmustern" being its own action.
 const MANAGE_GATED_UPDATE_KEYS = [
   'articleId',
   'ownerOrganizationId',
   'ownerUnitId',
-  'status',
   'serialNumber',
   'notes',
   'purchasePrice',
@@ -271,16 +273,30 @@ export class InventoryService {
 
     if (
       dto.inventoryNumber !== undefined &&
-      !user.permissions.includes(PERMISSIONS.INVENTORY_CHANGE_INV_NUM)
+      !user.permissions.includes(PERMISSIONS.INVENTORY_CHANGE_INVENTORY_NUMBER)
     ) {
       throw new AppForbiddenException(
         'Sie haben keine Berechtigung, die Inventarnummer zu ändern.',
         'MISSING_PERMISSION',
       );
     }
+    if (dto.status !== undefined && dto.status !== existing.status) {
+      const isRetiring = dto.status === InventoryStatus.retired;
+      const required = isRetiring
+        ? PERMISSIONS.INVENTORY_RETIRE
+        : PERMISSIONS.INVENTORY_UPDATE;
+      if (!user.permissions.includes(required)) {
+        throw new AppForbiddenException(
+          isRetiring
+            ? 'Sie haben keine Berechtigung, Inventarobjekte auszumustern.'
+            : 'Sie haben keine Berechtigung, Inventarobjekte zu bearbeiten.',
+          'MISSING_PERMISSION',
+        );
+      }
+    }
     if (
       MANAGE_GATED_UPDATE_KEYS.some((key) => dto[key] !== undefined) &&
-      !user.permissions.includes(PERMISSIONS.INVENTORY_MANAGE)
+      !user.permissions.includes(PERMISSIONS.INVENTORY_UPDATE)
     ) {
       throw new AppForbiddenException(
         'Sie haben keine Berechtigung, Inventarobjekte zu bearbeiten.',

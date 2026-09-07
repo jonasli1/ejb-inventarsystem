@@ -24,32 +24,32 @@ import { UpdateRoomDto } from './dto/update-room.dto';
 export class RoomsController {
   constructor(private readonly roomsService: RoomsService) {}
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.LOCATIONS_READ)
   @ApiQuery({ name: 'locationId', required: false })
   @Get()
   findAll(@Query('locationId') locationId?: string) {
     return this.roomsService.findAll(locationId);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.LOCATIONS_READ)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.roomsService.findOne(id);
   }
 
-  @RequirePermissions(PERMISSIONS.LOCATIONS_MANAGE)
+  @RequirePermissions(PERMISSIONS.LOCATIONS_CREATE)
   @Post()
   create(@Body() dto: CreateRoomDto) {
     return this.roomsService.create(dto);
   }
 
-  @RequirePermissions(PERMISSIONS.LOCATIONS_MANAGE)
+  @RequirePermissions(PERMISSIONS.LOCATIONS_UPDATE)
   @Put(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateRoomDto) {
     return this.roomsService.update(id, dto);
   }
 
-  @RequirePermissions(PERMISSIONS.LOCATIONS_MANAGE)
+  @RequirePermissions(PERMISSIONS.LOCATIONS_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async remove(@Param('id', ParseUUIDPipe) id: string) {

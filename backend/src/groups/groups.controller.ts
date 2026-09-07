@@ -31,25 +31,25 @@ import { AssignRoleDto } from '../users/dto/assign-role.dto';
 export class GroupsController {
   constructor(private readonly groupsService: GroupsService) {}
 
-  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @RequirePermissions(PERMISSIONS.GROUPS_READ)
   @Get()
   findAll(@Query() query: PaginationQueryDto) {
     return this.groupsService.findAll(query);
   }
 
-  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @RequirePermissions(PERMISSIONS.GROUPS_READ)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.groupsService.findOne(id);
   }
 
-  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @RequirePermissions(PERMISSIONS.GROUPS_CREATE)
   @Post()
   create(@Body() dto: CreateGroupDto, @CurrentUser() user: AuthenticatedUser) {
     return this.groupsService.create(dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @RequirePermissions(PERMISSIONS.GROUPS_UPDATE)
   @Put(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -59,7 +59,7 @@ export class GroupsController {
     return this.groupsService.update(id, dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @RequirePermissions(PERMISSIONS.GROUPS_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async remove(
@@ -69,13 +69,13 @@ export class GroupsController {
     await this.groupsService.remove(id, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @RequirePermissions(PERMISSIONS.GROUPS_READ)
   @Get(':id/roles')
   listRoles(@Param('id', ParseUUIDPipe) id: string) {
     return this.groupsService.listRoles(id);
   }
 
-  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @RequirePermissions(PERMISSIONS.GROUPS_UPDATE)
   @Post(':id/roles')
   assignRole(
     @Param('id', ParseUUIDPipe) id: string,
@@ -84,7 +84,7 @@ export class GroupsController {
     return this.groupsService.assignRole(id, dto.roleId);
   }
 
-  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @RequirePermissions(PERMISSIONS.GROUPS_UPDATE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id/roles/:roleId')
   async removeRole(
@@ -94,13 +94,13 @@ export class GroupsController {
     await this.groupsService.removeRole(id, roleId);
   }
 
-  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @RequirePermissions(PERMISSIONS.GROUPS_READ)
   @Get(':id/organization-scopes')
   listOrganizationScopes(@Param('id', ParseUUIDPipe) id: string) {
     return this.groupsService.listOrganizationScopes(id);
   }
 
-  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @RequirePermissions(PERMISSIONS.GROUPS_UPDATE)
   @Post(':id/organization-scopes')
   addOrganizationScope(
     @Param('id', ParseUUIDPipe) id: string,
@@ -109,7 +109,7 @@ export class GroupsController {
     return this.groupsService.addOrganizationScope(id, dto);
   }
 
-  @RequirePermissions(PERMISSIONS.GROUPS_MANAGE)
+  @RequirePermissions(PERMISSIONS.GROUPS_UPDATE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id/organization-scopes/:scopeId')
   async removeOrganizationScope(

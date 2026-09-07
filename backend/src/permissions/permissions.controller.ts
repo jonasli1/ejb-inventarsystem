@@ -21,13 +21,13 @@ import { CreatePermissionDto } from './dto/create-permission.dto';
 export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
 
-  @RequirePermissions(PERMISSIONS.ROLES_MANAGE)
+  @RequirePermissions(PERMISSIONS.ROLES_READ)
   @Get()
   findAll() {
     return this.permissionsService.findAll();
   }
 
-  @RequirePermissions(PERMISSIONS.ROLES_MANAGE)
+  @RequirePermissions(PERMISSIONS.ROLES_READ)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.permissionsService.findOne(id);

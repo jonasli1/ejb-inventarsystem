@@ -14,19 +14,19 @@ const manageUser: AuthenticatedUser = {
   id: 'user-manage',
   email: 'manage@example.com',
   displayName: 'Manage User',
-  permissions: ['inventory.manage'],
+  permissions: ['inventory.update'],
 };
 const changeInvNumUser: AuthenticatedUser = {
   id: 'user-invnum',
   email: 'invnum@example.com',
   displayName: 'InvNum User',
-  permissions: ['inventory.change_inv_num'],
+  permissions: ['inventory.change_inventory_number'],
 };
 const bothUser: AuthenticatedUser = {
   id: 'user-both',
   email: 'both@example.com',
   displayName: 'Both User',
-  permissions: ['inventory.manage', 'inventory.change_inv_num'],
+  permissions: ['inventory.update', 'inventory.change_inventory_number'],
 };
 
 describe('InventoryService', () => {

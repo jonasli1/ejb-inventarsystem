@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AppNotFoundException } from '../common/exceptions/app.exception';
 import { CreatePermissionDto } from './dto/create-permission.dto';
 
 @Injectable()
@@ -14,7 +15,8 @@ export class PermissionsService {
     const permission = await this.prisma.permission.findUnique({
       where: { id },
     });
-    if (!permission) throw new NotFoundException('Permission not found.');
+    if (!permission)
+      throw new AppNotFoundException('Berechtigung nicht gefunden.');
     return permission;
   }
 

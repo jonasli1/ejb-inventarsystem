@@ -887,7 +887,7 @@ describe('Inventarsystem API (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
       const loansViewPermission = permissions.body.find(
-        (p: { key: string }) => p.key === 'loans.view',
+        (p: { key: string }) => p.key === 'loans.read',
       );
       expect(loansViewPermission).toBeDefined();
 
@@ -3709,12 +3709,12 @@ describe('Inventarsystem API (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/api/v1/roles/${manageOnlyRole.id}/permissions`)
         .set('Authorization', `Bearer ${adminSessionToken}`)
-        .send({ permissionId: permId('inventory.manage') })
+        .send({ permissionId: permId('inventory.update') })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/api/v1/roles/${manageOnlyRole.id}/permissions`)
         .set('Authorization', `Bearer ${adminSessionToken}`)
-        .send({ permissionId: permId('inventory.view') })
+        .send({ permissionId: permId('inventory.read') })
         .expect(201);
 
       const changeInvNumOnlyRole = (
@@ -3727,12 +3727,12 @@ describe('Inventarsystem API (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/api/v1/roles/${changeInvNumOnlyRole.id}/permissions`)
         .set('Authorization', `Bearer ${adminSessionToken}`)
-        .send({ permissionId: permId('inventory.change_inv_num') })
+        .send({ permissionId: permId('inventory.change_inventory_number') })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/api/v1/roles/${changeInvNumOnlyRole.id}/permissions`)
         .set('Authorization', `Bearer ${adminSessionToken}`)
-        .send({ permissionId: permId('inventory.view') })
+        .send({ permissionId: permId('inventory.read') })
         .expect(201);
 
       async function createUserWithRole(
@@ -3768,7 +3768,7 @@ describe('Inventarsystem API (e2e)', () => {
       );
     });
 
-    it('lets inventory.manage change other fields but not the inventory number', async () => {
+    it('lets inventory.update change other fields but not the inventory number', async () => {
       await request(app.getHttpServer())
         .put(`/api/v1/inventory/${itemId}`)
         .set('Authorization', `Bearer ${manageOnlyToken}`)
@@ -3784,7 +3784,7 @@ describe('Inventarsystem API (e2e)', () => {
       expect(updated.body.inventoryNumber).toBe('INVNUM-ORIGINAL');
     });
 
-    it('lets inventory.change_inv_num change the inventory number but not other fields', async () => {
+    it('lets inventory.change_inventory_number change the inventory number but not other fields', async () => {
       await request(app.getHttpServer())
         .put(`/api/v1/inventory/${itemId}`)
         .set('Authorization', `Bearer ${changeInvNumOnlyToken}`)
@@ -4115,6 +4115,89 @@ describe('Inventarsystem API (e2e)', () => {
     });
   });
 
+  describe('loan hard delete (loans.delete permission)', () => {
+    let adminToken: string;
+    let loanId: string;
+
+    beforeAll(async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+      adminToken = login.body.accessToken;
+
+      const org = await request(app.getHttpServer())
+        .post('/api/v1/organizations')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: 'Delete Loan Org' })
+        .expect(201);
+      const unit = await request(app.getHttpServer())
+        .post(`/api/v1/organizations/${org.body.id}/units`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: 'Delete Loan Unit' })
+        .expect(201);
+      const location = await request(app.getHttpServer())
+        .post('/api/v1/locations')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: 'Delete Loan Location' })
+        .expect(201);
+      const room = await request(app.getHttpServer())
+        .post('/api/v1/rooms')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: 'Delete Loan Room', locationId: location.body.id })
+        .expect(201);
+      const article = await request(app.getHttpServer())
+        .post('/api/v1/articles')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: 'Delete Loan Article' })
+        .expect(201);
+      const item = await request(app.getHttpServer())
+        .post('/api/v1/inventory')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          articleId: article.body.id,
+          locationId: location.body.id,
+          roomId: room.body.id,
+          ownerOrganizationId: org.body.id,
+          ownerUnitId: unit.body.id,
+        })
+        .expect(201);
+      const loan = await request(app.getHttpServer())
+        .post('/api/v1/loans')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          borrowerName: 'Delete Loan Borrower',
+          ...LOAN_BORROWER_FIELDS,
+          items: [{ inventoryItemId: item.body.id }],
+        })
+        .expect(201);
+      loanId = loan.body.id;
+    });
+
+    it('refuses to delete a loan without the loans.delete permission', async () => {
+      const viewerLogin = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'viewer@example.com', password: 'ViewerPass123!' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .delete(`/api/v1/loans/${loanId}`)
+        .set('Authorization', `Bearer ${viewerLogin.body.accessToken}`)
+        .expect(403);
+    });
+
+    it('permanently deletes a loan with loans.delete', async () => {
+      await request(app.getHttpServer())
+        .delete(`/api/v1/loans/${loanId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .get(`/api/v1/loans/${loanId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
+    });
+  });
 });
 
 async function resetDatabase(prisma: PrismaService) {
@@ -4169,7 +4252,7 @@ async function seedBaseline(prisma: PrismaService) {
       name: 'Betrachter',
       rolePermissions: {
         create: permissionRecords
-          .filter((p) => p.key === 'inventory.view')
+          .filter((p) => p.key === 'inventory.read')
           .map((p) => ({ permissionId: p.id })),
       },
     },

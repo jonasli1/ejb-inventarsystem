@@ -8,11 +8,18 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { ChurchToolsService } from './churchtools/churchtools.service';
 import { WebauthnService } from './webauthn/webauthn.service';
+import { AuthThrottlerGuard } from './auth-throttler.guard';
 
 @Module({
   imports: [PassportModule, JwtModule.register({}), GroupsModule, UsersModule],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, ChurchToolsService, WebauthnService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    ChurchToolsService,
+    WebauthnService,
+    AuthThrottlerGuard,
+  ],
   exports: [AuthService, ChurchToolsService],
 })
 export class AuthModule {}

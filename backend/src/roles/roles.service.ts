@@ -1,11 +1,11 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationPreferencesService } from '../notifications/notification-preferences.service';
+import {
+  AppForbiddenException,
+  AppNotFoundException,
+} from '../common/exceptions/app.exception';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 
@@ -34,7 +34,7 @@ export class RolesService {
       where: { id },
       include: { rolePermissions: { include: { permission: true } } },
     });
-    if (!role) throw new NotFoundException('Role not found.');
+    if (!role) throw new AppNotFoundException('Rolle nicht gefunden.');
     return role;
   }
 
@@ -57,8 +57,9 @@ export class RolesService {
       dto.name !== undefined &&
       dto.name !== PROTECTED_ROLE_NAME
     ) {
-      throw new ForbiddenException(
-        `The "${PROTECTED_ROLE_NAME}" role cannot be renamed, to prevent losing the last guaranteed path to full system access.`,
+      throw new AppForbiddenException(
+        `Die Rolle "${PROTECTED_ROLE_NAME}" kann nicht umbenannt werden, um den letzten garantierten Zugang zum System nicht zu verlieren.`,
+        'PROTECTED_ROLE',
       );
     }
     const updated = await this.prisma.role.update({ where: { id }, data: dto });
@@ -75,8 +76,9 @@ export class RolesService {
   async remove(id: string, actorId?: string) {
     const role = await this.findOne(id);
     if (role.name === PROTECTED_ROLE_NAME) {
-      throw new ForbiddenException(
-        `The "${PROTECTED_ROLE_NAME}" role cannot be deleted, to prevent locking every administrator out of the system.`,
+      throw new AppForbiddenException(
+        `Die Rolle "${PROTECTED_ROLE_NAME}" kann nicht gelöscht werden, um zu verhindern, dass alle Administratoren ausgesperrt werden.`,
+        'PROTECTED_ROLE',
       );
     }
     await this.prisma.role.delete({ where: { id } });
@@ -94,7 +96,8 @@ export class RolesService {
     const permission = await this.prisma.permission.findUnique({
       where: { id: permissionId },
     });
-    if (!permission) throw new NotFoundException('Permission not found.');
+    if (!permission)
+      throw new AppNotFoundException('Berechtigung nicht gefunden.');
 
     return this.prisma.rolePermission.upsert({
       where: { roleId_permissionId: { roleId, permissionId } },

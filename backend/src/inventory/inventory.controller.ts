@@ -35,25 +35,25 @@ import { AssignAccessoryDto } from './dto/assign-accessory.dto';
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.INVENTORY_READ)
   @Get()
   findAll(@Query() query: QueryInventoryItemDto) {
     return this.inventoryService.findAll(query);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.INVENTORY_READ)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.inventoryService.findOneWithInherited(id);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.INVENTORY_READ)
   @Get(':id/movements')
   getMovements(@Param('id', ParseUUIDPipe) id: string) {
     return this.inventoryService.getMovements(id);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_VIEW)
+  @RequirePermissions(PERMISSIONS.INVENTORY_READ)
   @Get(':id/accessory-candidates')
   getAccessoryCandidates(
     @Param('id', ParseUUIDPipe) id: string,
@@ -62,7 +62,7 @@ export class InventoryController {
     return this.inventoryService.getAccessoryCandidates(id, query);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_MANAGE)
+  @RequirePermissions(PERMISSIONS.INVENTORY_CREATE)
   @Post()
   create(
     @Body() dto: CreateInventoryItemDto,
@@ -72,8 +72,9 @@ export class InventoryController {
   }
 
   @RequireAnyPermission(
-    PERMISSIONS.INVENTORY_MANAGE,
-    PERMISSIONS.INVENTORY_CHANGE_INV_NUM,
+    PERMISSIONS.INVENTORY_UPDATE,
+    PERMISSIONS.INVENTORY_CHANGE_INVENTORY_NUMBER,
+    PERMISSIONS.INVENTORY_RETIRE,
   )
   @Put(':id')
   update(
@@ -84,7 +85,7 @@ export class InventoryController {
     return this.inventoryService.update(id, dto, user);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_MANAGE)
+  @RequirePermissions(PERMISSIONS.INVENTORY_UPDATE)
   @Post(':id/move')
   move(
     @Param('id', ParseUUIDPipe) id: string,
@@ -94,7 +95,7 @@ export class InventoryController {
     return this.inventoryService.move(id, dto, user.id);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_MANAGE)
+  @RequirePermissions(PERMISSIONS.INVENTORY_UPDATE)
   @Put(':id/accessory')
   assignAccessory(
     @Param('id', ParseUUIDPipe) id: string,
@@ -103,7 +104,7 @@ export class InventoryController {
     return this.inventoryService.assignAccessory(id, dto.accessoryItemId);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_MANAGE)
+  @RequirePermissions(PERMISSIONS.INVENTORY_UPDATE)
   @Delete(':id/accessory/:accessoryId')
   removeAccessory(
     @Param('id', ParseUUIDPipe) id: string,
@@ -112,7 +113,7 @@ export class InventoryController {
     return this.inventoryService.removeAccessory(id, accessoryId);
   }
 
-  @RequirePermissions(PERMISSIONS.INVENTORY_MANAGE)
+  @RequirePermissions(PERMISSIONS.INVENTORY_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async remove(
