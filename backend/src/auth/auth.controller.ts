@@ -8,9 +8,10 @@ import {
   Put,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import {
   CurrentUser,
@@ -18,6 +19,7 @@ import {
 } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { AuthService } from './auth.service';
+import { AuthThrottlerGuard } from './auth-throttler.guard';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
@@ -34,7 +36,7 @@ import {
 // Read directly from process.env (not ConfigService) because decorator
 // metadata is evaluated at module-load time, before Nest's DI container exists.
 const AUTH_THROTTLE_LIMIT = parseInt(
-  process.env.THROTTLE_AUTH_LIMIT ?? '5',
+  process.env.THROTTLE_AUTH_LIMIT ?? '10',
   10,
 );
 const AUTH_THROTTLE_TTL = parseInt(
@@ -48,6 +50,11 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  // Throttled by IP+email (see AuthThrottlerGuard) instead of the global
+  // per-IP guard: behind a shared IP (e.g. a church's WLAN/NAT), one
+  // member's failed attempts must not lock everyone else out of login.
+  @SkipThrottle({ default: true })
+  @UseGuards(AuthThrottlerGuard)
   @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: AUTH_THROTTLE_TTL } })
   @Post('login')
   @ApiOperation({ summary: 'Login with email + password' })
@@ -134,6 +141,8 @@ export class AuthController {
   }
 
   @Public()
+  @SkipThrottle({ default: true })
+  @UseGuards(AuthThrottlerGuard)
   @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: AUTH_THROTTLE_TTL } })
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post('forgot-password')

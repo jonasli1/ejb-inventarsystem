@@ -3,6 +3,7 @@ export default () => ({
   port: parseInt(process.env.PORT ?? '3000', 10),
   apiPrefix: process.env.API_PREFIX ?? 'api/v1',
   corsOrigin: process.env.CORS_ORIGIN ?? '*',
+  trustProxyHops: parseInt(process.env.TRUST_PROXY_HOPS ?? '2', 10),
 
   database: {
     url: process.env.DATABASE_URL,

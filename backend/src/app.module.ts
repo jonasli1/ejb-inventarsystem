@@ -47,6 +47,7 @@ import { AppService } from './app.service';
             limit: parseInt(process.env.THROTTLE_LIMIT ?? '20', 10),
           },
         ],
+        errorMessage: 'Zu viele Anfragen. Bitte versuchen Sie es in Kürze erneut.',
       }),
     }),
     PrismaModule,

@@ -17,6 +17,12 @@ export const envValidationSchema = Joi.object({
 
   THROTTLE_TTL: Joi.number().default(60000),
   THROTTLE_LIMIT: Joi.number().default(20),
+  THROTTLE_AUTH_LIMIT: Joi.number().default(10),
+  THROTTLE_AUTH_TTL: Joi.number().default(60000),
+
+  // Number of reverse-proxy hops in front of this process (see main.ts) -
+  // this deployment always runs behind Caddy -> nginx (frontend container).
+  TRUST_PROXY_HOPS: Joi.number().default(2),
 
   CHURCHTOOLS_BASE_URL: Joi.string().allow('').optional(),
   CHURCHTOOLS_CLIENT_ID: Joi.string().allow('').optional(),

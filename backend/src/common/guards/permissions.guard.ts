@@ -1,9 +1,4 @@
-import {
-  ForbiddenException,
-  Injectable,
-  CanActivate,
-  ExecutionContext,
-} from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import {
   ANY_PERMISSIONS_KEY,
@@ -11,6 +6,7 @@ import {
 } from '../decorators/permissions.decorator';
 import type { PermissionKey } from '../constants/permissions';
 import type { AuthenticatedUser } from '../decorators/current-user.decorator';
+import { AppForbiddenException } from '../exceptions/app.exception';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -36,7 +32,10 @@ export class PermissionsGuard implements CanActivate {
     const user = request.user;
 
     if (!user) {
-      throw new ForbiddenException('Not authenticated.');
+      throw new AppForbiddenException(
+        'Anmeldung erforderlich.',
+        'UNAUTHENTICATED',
+      );
     }
 
     const hasAll =
@@ -44,8 +43,9 @@ export class PermissionsGuard implements CanActivate {
       required.every((permission) => user.permissions.includes(permission));
 
     if (!hasAll) {
-      throw new ForbiddenException(
-        `Missing required permission(s): ${required.join(', ')}`,
+      throw new AppForbiddenException(
+        `Fehlende Berechtigung(en): ${required!.join(', ')}`,
+        'MISSING_PERMISSION',
       );
     }
 
@@ -54,8 +54,9 @@ export class PermissionsGuard implements CanActivate {
       requiredAny.some((permission) => user.permissions.includes(permission));
 
     if (!hasAny) {
-      throw new ForbiddenException(
-        `Missing required permission(s): one of ${requiredAny.join(', ')}`,
+      throw new AppForbiddenException(
+        `Fehlende Berechtigung(en): eine von ${requiredAny!.join(', ')}`,
+        'MISSING_PERMISSION',
       );
     }
 

@@ -1,18 +1,32 @@
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { createValidationPipe } from './common/pipes/validation-pipe.factory';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
 
   const apiPrefix = config.get<string>('apiPrefix')!;
   app.setGlobalPrefix(apiPrefix);
+
+  // The app is only ever reached through our own reverse-proxy chain
+  // (Caddy -> nginx (frontend container) -> this process, see
+  // docker-compose.yml / caddy/Caddyfile / frontend/nginx-locations.conf,
+  // which already forwards X-Forwarded-For). Without `trust proxy`, Express
+  // treats every request as coming from that immediate socket peer, so
+  // req.ip is the SAME internal container IP for every real-world client -
+  // meaning every user of the whole deployment shares one IP-keyed
+  // throttle bucket (this is what caused login to 429 in production).
+  // `trustProxyHops` counts those hops (Caddy, nginx) so Express resolves
+  // the real client IP from X-Forwarded-For instead.
+  app.set('trust proxy', config.get<number>('trustProxyHops'));
 
   app.use(helmet());
   app.use(compression());
@@ -23,17 +37,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      // Deliberately NOT using enableImplicitConversion: it coerces booleans
-      // via `Boolean(value)`, so the query string "false" becomes `true`.
-      // DTOs that need type coercion (e.g. pagination page/pageSize) use an
-      // explicit @Type()/@Transform() decorator instead.
-    }),
-  );
+  app.useGlobalPipes(createValidationPipe());
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Inventarsystem API')
