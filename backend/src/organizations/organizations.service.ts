@@ -1,19 +1,18 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   paginate,
   PaginationQueryDto,
 } from '../common/dto/pagination-query.dto';
-import { AuditService } from '../audit/audit.service';
+import { AppNotFoundException } from '../common/exceptions/app.exception';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 
+// Create/update/delete are audited automatically by AuditInterceptor (see
+// the @Audited() decorator on OrganizationsController).
 @Injectable()
 export class OrganizationsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly audit: AuditService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: PaginationQueryDto) {
     const page = query.page ?? 1;
@@ -38,52 +37,28 @@ export class OrganizationsService {
       where: { id, deletedAt: null },
       include: { units: { where: { deletedAt: null } } },
     });
-    if (!organization) throw new NotFoundException('Organization not found.');
+    if (!organization)
+      throw new AppNotFoundException('Organisation nicht gefunden.');
     return organization;
   }
 
-  async create(dto: CreateOrganizationDto, actorId?: string) {
-    const organization = await this.prisma.organization.create({
-      data: dto,
-    });
-    await this.audit.log({
-      entityType: 'Organization',
-      entityId: organization.id,
-      action: 'create',
-      summary: `Organisation "${organization.name}" angelegt`,
-      userId: actorId,
-    });
-    return organization;
+  async create(dto: CreateOrganizationDto) {
+    return this.prisma.organization.create({ data: dto });
   }
 
-  async update(id: string, dto: UpdateOrganizationDto, actorId?: string) {
-    const before = await this.findOne(id);
-    const organization = await this.prisma.organization.update({
+  async update(id: string, dto: UpdateOrganizationDto) {
+    await this.findOne(id);
+    return this.prisma.organization.update({
       where: { id },
       data: dto,
     });
-    await this.audit.log({
-      entityType: 'Organization',
-      entityId: id,
-      action: 'update',
-      summary: `Organisation "${before.name}" aktualisiert`,
-      userId: actorId,
-    });
-    return organization;
   }
 
-  async remove(id: string, actorId?: string) {
-    const organization = await this.findOne(id);
+  async remove(id: string) {
+    await this.findOne(id);
     await this.prisma.organization.update({
       where: { id },
       data: { deletedAt: new Date() },
-    });
-    await this.audit.log({
-      entityType: 'Organization',
-      entityId: id,
-      action: 'delete',
-      summary: `Organisation "${organization.name}" gelöscht`,
-      userId: actorId,
     });
   }
 }

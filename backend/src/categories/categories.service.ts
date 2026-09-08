@@ -1,12 +1,14 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  AppBadRequestException,
+  AppNotFoundException,
+} from '../common/exceptions/app.exception';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
+// Create/update/delete are audited automatically by AuditInterceptor (see
+// the @Audited() decorator on CategoriesController).
 @Injectable()
 export class CategoriesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -22,19 +24,23 @@ export class CategoriesService {
     const category = await this.prisma.category.findFirst({
       where: { id, deletedAt: null },
     });
-    if (!category) throw new NotFoundException('Category not found.');
+    if (!category) throw new AppNotFoundException('Kategorie nicht gefunden.');
     return category;
   }
 
   private async assertParentValid(parentId?: string, selfId?: string) {
     if (!parentId) return;
     if (parentId === selfId) {
-      throw new BadRequestException('A category cannot be its own parent.');
+      throw new AppBadRequestException(
+        'Eine Kategorie kann nicht ihre eigene übergeordnete Kategorie sein.',
+        'CATEGORY_SELF_PARENT',
+      );
     }
     const parent = await this.prisma.category.findFirst({
       where: { id: parentId, deletedAt: null },
     });
-    if (!parent) throw new NotFoundException('Parent category not found.');
+    if (!parent)
+      throw new AppNotFoundException('Übergeordnete Kategorie nicht gefunden.');
   }
 
   async create(dto: CreateCategoryDto) {

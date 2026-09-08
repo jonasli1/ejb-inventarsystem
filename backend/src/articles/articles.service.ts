@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate } from '../common/dto/pagination-query.dto';
-import { AuditService } from '../audit/audit.service';
 import {
   AppConflictException,
   AppNotFoundException,
@@ -11,12 +10,12 @@ import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
 import { QueryArticleDto } from './dto/query-article.dto';
 
+// Create/update/delete are audited automatically by AuditInterceptor (see
+// the @Audited() decorator on ArticlesController) - no manual AuditService
+// calls needed here.
 @Injectable()
 export class ArticlesService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly audit: AuditService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: QueryArticleDto) {
     const page = query.page ?? 1;
@@ -100,38 +99,22 @@ export class ArticlesService {
     });
   }
 
-  async create(dto: CreateArticleDto, actorId?: string) {
-    const article = await this.prisma.article.create({
+  async create(dto: CreateArticleDto) {
+    return this.prisma.article.create({
       data: { ...dto, attributes: dto.attributes as Prisma.InputJsonValue },
     });
-    await this.audit.log({
-      entityType: 'Article',
-      entityId: article.id,
-      action: 'create',
-      summary: `Artikel "${article.name}" angelegt`,
-      userId: actorId,
-    });
-    return article;
   }
 
-  async update(id: string, dto: UpdateArticleDto, actorId?: string) {
-    const before = await this.findOne(id);
-    const article = await this.prisma.article.update({
+  async update(id: string, dto: UpdateArticleDto) {
+    await this.findOne(id);
+    return this.prisma.article.update({
       where: { id },
       data: { ...dto, attributes: dto.attributes as Prisma.InputJsonValue },
     });
-    await this.audit.log({
-      entityType: 'Article',
-      entityId: id,
-      action: 'update',
-      summary: `Artikel "${before.name}" aktualisiert`,
-      userId: actorId,
-    });
-    return article;
   }
 
-  async remove(id: string, actorId?: string) {
-    const before = await this.findOne(id);
+  async remove(id: string) {
+    await this.findOne(id);
     const stockCount = await this.prisma.inventoryItem.count({
       where: { articleId: id, deletedAt: null },
     });
@@ -144,13 +127,6 @@ export class ArticlesService {
     await this.prisma.article.update({
       where: { id },
       data: { deletedAt: new Date() },
-    });
-    await this.audit.log({
-      entityType: 'Article',
-      entityId: id,
-      action: 'delete',
-      summary: `Artikel "${before.name}" gelöscht`,
-      userId: actorId,
     });
   }
 

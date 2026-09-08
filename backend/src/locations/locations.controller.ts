@@ -11,12 +11,9 @@ import {
   Put,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import {
-  CurrentUser,
-  type AuthenticatedUser,
-} from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { PERMISSIONS } from '../common/constants/permissions';
+import { Audited } from '../audit/audited.decorator';
 import { LocationsService } from './locations.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
@@ -39,32 +36,28 @@ export class LocationsController {
     return this.locationsService.findOne(id);
   }
 
+  @Audited('Location', 'other')
   @RequirePermissions(PERMISSIONS.LOCATIONS_CREATE)
   @Post()
-  create(
-    @Body() dto: CreateLocationDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.locationsService.create(dto, user.id);
+  create(@Body() dto: CreateLocationDto) {
+    return this.locationsService.create(dto);
   }
 
+  @Audited('Location', 'other')
   @RequirePermissions(PERMISSIONS.LOCATIONS_UPDATE)
   @Put(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateLocationDto,
-    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.locationsService.update(id, dto, user.id);
+    return this.locationsService.update(id, dto);
   }
 
+  @Audited('Location', 'other')
   @RequirePermissions(PERMISSIONS.LOCATIONS_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
-  async remove(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    await this.locationsService.remove(id, user.id);
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
+    await this.locationsService.remove(id);
   }
 }

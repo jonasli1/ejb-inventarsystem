@@ -19,6 +19,7 @@ import {
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { PERMISSIONS } from '../common/constants/permissions';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { Audited } from '../audit/audited.decorator';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -45,22 +46,21 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
+  @Audited('User', 'person')
   @RequirePermissions(PERMISSIONS.USERS_CREATE)
   @Post()
-  create(@Body() dto: CreateUserDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.usersService.create(dto, user.id);
+  create(@Body() dto: CreateUserDto) {
+    return this.usersService.create(dto);
   }
 
+  @Audited('User', 'person')
   @RequirePermissions(PERMISSIONS.USERS_UPDATE)
   @Put(':id')
-  update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateUserDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.usersService.update(id, dto, user.id);
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateUserDto) {
+    return this.usersService.update(id, dto);
   }
 
+  @Audited('User', 'person')
   @RequirePermissions(PERMISSIONS.USERS_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')

@@ -1,9 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AppNotFoundException } from '../common/exceptions/app.exception';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
 
+// Create/update/delete are audited automatically by AuditInterceptor (see
+// the @Audited() decorator on RoomsController).
 @Injectable()
 export class RoomsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -25,7 +28,7 @@ export class RoomsService {
       where: { id, deletedAt: null },
       include: { location: true },
     });
-    if (!room) throw new NotFoundException('Room not found.');
+    if (!room) throw new AppNotFoundException('Raum nicht gefunden.');
     return room;
   }
 
@@ -33,7 +36,7 @@ export class RoomsService {
     const location = await this.prisma.location.findFirst({
       where: { id: locationId, deletedAt: null },
     });
-    if (!location) throw new NotFoundException('Location not found.');
+    if (!location) throw new AppNotFoundException('Standort nicht gefunden.');
   }
 
   async create(dto: CreateRoomDto) {

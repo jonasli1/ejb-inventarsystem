@@ -61,6 +61,24 @@ enum AuditAction {
   create
   update
   delete
+  login
+  login_failed
+  logout
+}
+
+// Coarse-grained bucket for filtering the /audit endpoint. Derived
+// automatically from entityType for most calls (see AuditService); `other`
+// covers entities outside the 7 categories the audit UI filters by
+// (locations, organizations, settings, permissions, attachments, ...).
+enum AuditCategory {
+  auth
+  loan
+  article
+  inventory
+  person
+  group
+  role
+  other
 }
 
 enum AttachmentEntityType {
@@ -561,19 +579,26 @@ model LoanItem {
 // ---------------------------------------------------------------------------
 
 model AuditLog {
-  id         String      @id @default(uuid())
-  entityType String      @map("entity_type")
-  entityId   String      @map("entity_id")
+  id         String        @id @default(uuid())
+  category   AuditCategory @default(other)
+  entityType String        @map("entity_type")
+  entityId   String        @map("entity_id")
   action     AuditAction
   summary    String
-  userId     String?     @map("user_id")
-  createdAt  DateTime    @default(now()) @map("created_at")
+  // Snapshots for update/delete (before) and create/update (after), written
+  // by the central AuditInterceptor. Manually-logged workflow actions (loan
+  // approve/issue/return, password reset, ...) typically only set `summary`.
+  beforeData Json?         @map("before_data")
+  afterData  Json?         @map("after_data")
+  userId     String?       @map("user_id")
+  createdAt  DateTime      @default(now()) @map("created_at")
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([entityType, entityId])
   @@index([userId])
   @@index([createdAt])
+  @@index([category, createdAt])
   @@map("audit_logs")
 }
 

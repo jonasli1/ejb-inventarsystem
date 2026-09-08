@@ -1,7 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { ArticlesService } from './articles.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { AuditService } from '../audit/audit.service';
 
 describe('ArticlesService', () => {
   let service: ArticlesService;
@@ -16,7 +15,6 @@ describe('ArticlesService', () => {
     $queryRaw: jest.Mock;
     $transaction: jest.Mock;
   };
-  let audit: { log: jest.Mock };
 
   beforeEach(() => {
     prisma = {
@@ -35,11 +33,7 @@ describe('ArticlesService', () => {
         .fn()
         .mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
-    audit = { log: jest.fn().mockResolvedValue(undefined) };
-    service = new ArticlesService(
-      prisma as unknown as PrismaService,
-      audit as unknown as AuditService,
-    );
+    service = new ArticlesService(prisma as unknown as PrismaService);
   });
 
   describe('findAll', () => {

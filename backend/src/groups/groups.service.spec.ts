@@ -1,7 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
 import { GroupsService } from './groups.service';
-import { PrismaService } from '../prisma/prisma.service';
-import { AuditService } from '../audit/audit.service';
 import { NotificationPreferencesService } from '../notifications/notification-preferences.service';
 
 describe('GroupsService', () => {
@@ -34,14 +32,12 @@ describe('GroupsService', () => {
       },
     };
 
-    const audit = { log: jest.fn().mockResolvedValue(undefined) };
     const notificationPreferences = {
       pruneForUser: jest.fn().mockResolvedValue(undefined),
     };
 
     service = new GroupsService(
       prisma,
-      audit as unknown as AuditService,
       notificationPreferences as unknown as NotificationPreferencesService,
     );
   });

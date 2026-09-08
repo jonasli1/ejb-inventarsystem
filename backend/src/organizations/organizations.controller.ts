@@ -12,13 +12,10 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import {
-  CurrentUser,
-  type AuthenticatedUser,
-} from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { PERMISSIONS } from '../common/constants/permissions';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { Audited } from '../audit/audited.decorator';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
@@ -41,32 +38,28 @@ export class OrganizationsController {
     return this.organizationsService.findOne(id);
   }
 
+  @Audited('Organization', 'other')
   @RequirePermissions(PERMISSIONS.ORGANIZATIONS_CREATE)
   @Post()
-  create(
-    @Body() dto: CreateOrganizationDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.organizationsService.create(dto, user.id);
+  create(@Body() dto: CreateOrganizationDto) {
+    return this.organizationsService.create(dto);
   }
 
+  @Audited('Organization', 'other')
   @RequirePermissions(PERMISSIONS.ORGANIZATIONS_UPDATE)
   @Put(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateOrganizationDto,
-    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.organizationsService.update(id, dto, user.id);
+    return this.organizationsService.update(id, dto);
   }
 
+  @Audited('Organization', 'other')
   @RequirePermissions(PERMISSIONS.ORGANIZATIONS_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
-  async remove(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    await this.organizationsService.remove(id, user.id);
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
+    await this.organizationsService.remove(id);
   }
 }

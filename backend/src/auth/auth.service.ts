@@ -1,10 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  Logger,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -20,7 +14,13 @@ import { GroupsService } from '../groups/groups.service';
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../notifications/email.service';
 import { AppSettingsService } from '../settings/app-settings.service';
+import { AuditService } from '../audit/audit.service';
 import { normalizeEmail } from '../common/utils/normalize-email';
+import {
+  AppBadRequestException,
+  AppConflictException,
+  AppUnauthorizedException,
+} from '../common/exceptions/app.exception';
 import {
   ChurchToolsService,
   ChurchToolsProfile,
@@ -50,6 +50,7 @@ export class AuthService {
     private readonly users: UsersService,
     private readonly email: EmailService,
     private readonly appSettings: AppSettingsService,
+    private readonly audit: AuditService,
   ) {}
 
   // ---------------------------------------------------------------------
@@ -67,22 +68,52 @@ export class AuthService {
     );
 
     if (!user || !user.isActive || user.deletedAt || !identity?.passwordHash) {
-      throw new UnauthorizedException('Invalid credentials.');
+      await this.logAuthEvent('login_failed', email, `Fehlgeschlagene Anmeldung für "${email}"`);
+      throw new AppUnauthorizedException(
+        'E-Mail-Adresse oder Passwort ist falsch.',
+        'INVALID_CREDENTIALS',
+      );
     }
 
     const valid = await argon2.verify(identity.passwordHash, password);
     if (!valid) {
-      throw new UnauthorizedException('Invalid credentials.');
+      await this.logAuthEvent(
+        'login_failed',
+        user.id,
+        `Fehlgeschlagene Anmeldung für "${email}"`,
+      );
+      throw new AppUnauthorizedException(
+        'E-Mail-Adresse oder Passwort ist falsch.',
+        'INVALID_CREDENTIALS',
+      );
     }
 
     return user;
   }
 
+  /** Small helper so every login/logout/failure site logs consistently under the "auth" category. */
+  private async logAuthEvent(
+    action: 'login' | 'login_failed' | 'logout',
+    entityId: string,
+    summary: string,
+    userId?: string,
+  ): Promise<void> {
+    await this.audit.log({
+      entityType: 'User',
+      entityId,
+      action,
+      category: 'auth',
+      summary,
+      userId: userId ?? (action === 'login_failed' ? undefined : entityId),
+    });
+  }
+
   /** Self-service password change: requires knowing the current password. */
   async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
     if (dto.newPassword !== dto.newPasswordConfirmation) {
-      throw new BadRequestException(
-        'The new password and its confirmation do not match.',
+      throw new AppBadRequestException(
+        'Das neue Passwort und die Bestätigung stimmen nicht überein.',
+        'PASSWORD_MISMATCH',
       );
     }
 
@@ -90,8 +121,9 @@ export class AuthService {
       where: { userId, provider: AuthProvider.local },
     });
     if (!identity?.passwordHash) {
-      throw new BadRequestException(
-        'This account has no local password set. Use "reset password" (admin) or set one via account settings first.',
+      throw new AppBadRequestException(
+        'Für dieses Konto ist kein lokales Passwort hinterlegt. Lassen Sie es zunächst von einem Administrator zurücksetzen oder richten Sie eines über die Kontoeinstellungen ein.',
+        'NO_LOCAL_PASSWORD',
       );
     }
 
@@ -100,7 +132,10 @@ export class AuthService {
       dto.currentPassword,
     );
     if (!valid) {
-      throw new UnauthorizedException('Current password is incorrect.');
+      throw new AppUnauthorizedException(
+        'Das aktuelle Passwort ist falsch.',
+        'INVALID_CREDENTIALS',
+      );
     }
 
     const passwordHash = await argon2.hash(dto.newPassword);
@@ -114,6 +149,15 @@ export class AuthService {
     await this.prisma.refreshToken.updateMany({
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
+    });
+
+    await this.audit.log({
+      entityType: 'User',
+      entityId: userId,
+      action: 'update',
+      category: 'auth',
+      summary: 'Passwort selbst geändert',
+      userId,
     });
   }
 
@@ -173,8 +217,9 @@ export class AuthService {
     newPasswordConfirmation: string,
   ): Promise<void> {
     if (newPassword !== newPasswordConfirmation) {
-      throw new BadRequestException(
-        'The new password and its confirmation do not match.',
+      throw new AppBadRequestException(
+        'Das neue Passwort und die Bestätigung stimmen nicht überein.',
+        'PASSWORD_MISMATCH',
       );
     }
 
@@ -191,16 +236,27 @@ export class AuthService {
     }
 
     if (!resetToken || resetToken.expiresAt.getTime() < Date.now()) {
-      throw new BadRequestException(
-        'This password reset link is invalid or has expired.',
+      throw new AppBadRequestException(
+        'Dieser Link zum Zurücksetzen des Passworts ist ungültig oder abgelaufen.',
+        'INVALID_RESET_TOKEN',
       );
     }
 
     await this.users.resetPassword(resetToken.userId, { newPassword });
+    await this.audit.log({
+      entityType: 'User',
+      entityId: resetToken.userId,
+      action: 'update',
+      category: 'auth',
+      summary: 'Passwort per Reset-Link zurückgesetzt',
+      userId: resetToken.userId,
+    });
   }
 
   async login(user: User, deviceLabel?: string): Promise<TokenResponseDto> {
-    return this.issueTokens(user, deviceLabel);
+    const tokens = await this.issueTokens(user, deviceLabel);
+    await this.logAuthEvent('login', user.id, `Anmeldung von "${user.email}"`);
+    return tokens;
   }
 
   async getMe(userId: string) {
@@ -304,7 +360,10 @@ export class AuthService {
       !existing.user.isActive ||
       existing.user.deletedAt
     ) {
-      throw new UnauthorizedException('Invalid or expired refresh token.');
+      throw new AppUnauthorizedException(
+        'Der Refresh-Token ist ungültig oder abgelaufen.',
+        'INVALID_REFRESH_TOKEN',
+      );
     }
 
     const tokens = await this.issueTokens(
@@ -323,10 +382,17 @@ export class AuthService {
 
   async logout(rawToken: string): Promise<void> {
     const tokenHash = this.hashToken(rawToken);
+    const existing = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash },
+      select: { userId: true, revokedAt: true },
+    });
     await this.prisma.refreshToken.updateMany({
       where: { tokenHash, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    if (existing && !existing.revokedAt) {
+      await this.logAuthEvent('logout', existing.userId, 'Abmeldung');
+    }
   }
 
   private hashToken(raw: string): string {
@@ -357,8 +423,9 @@ export class AuthService {
 
   async getChurchToolsAuthorizationUrl() {
     if (!(await this.appSettings.isChurchToolsEnabled())) {
-      throw new BadRequestException(
-        'ChurchTools login is disabled on this system.',
+      throw new AppBadRequestException(
+        'Die Anmeldung über ChurchTools ist auf diesem System deaktiviert.',
+        'CHURCHTOOLS_DISABLED',
       );
     }
     return this.churchTools.buildAuthorizationUrl();
@@ -372,7 +439,13 @@ export class AuthService {
     const user = await this.upsertChurchToolsUser(profile);
     await this.syncChurchToolsGroups(user.id, profile.groups);
     await this.groups.syncUserRoles(user.id);
-    return this.issueTokens(user);
+    const tokens = await this.issueTokens(user);
+    await this.logAuthEvent(
+      'login',
+      user.id,
+      `Anmeldung von "${user.email}" via ChurchTools`,
+    );
+    return tokens;
   }
 
   private async upsertChurchToolsUser(
@@ -407,8 +480,9 @@ export class AuthService {
     }
 
     if (!profile.email) {
-      throw new BadRequestException(
-        'ChurchTools profile did not provide an email address required for account linking.',
+      throw new AppBadRequestException(
+        'Das ChurchTools-Profil enthält keine E-Mail-Adresse, die für die Kontoverknüpfung erforderlich ist.',
+        'CHURCHTOOLS_EMAIL_MISSING',
       );
     }
 
@@ -492,8 +566,9 @@ export class AuthService {
 
   private async assertPasskeyEnabled(): Promise<void> {
     if (!(await this.appSettings.isPasskeyEnabled())) {
-      throw new BadRequestException(
-        'Passkey login is disabled on this system.',
+      throw new AppBadRequestException(
+        'Die Anmeldung per Passkey ist auf diesem System deaktiviert.',
+        'PASSKEY_DISABLED',
       );
     }
   }
@@ -531,8 +606,9 @@ export class AuthService {
     );
 
     if (!verification.verified || !verification.registrationInfo) {
-      throw new BadRequestException(
-        'Passkey registration could not be verified.',
+      throw new AppBadRequestException(
+        'Die Passkey-Registrierung konnte nicht verifiziert werden.',
+        'PASSKEY_VERIFICATION_FAILED',
       );
     }
 
@@ -542,7 +618,10 @@ export class AuthService {
       where: { credentialId: credential.id },
     });
     if (existing) {
-      throw new ConflictException('This passkey is already registered.');
+      throw new AppConflictException(
+        'Dieser Passkey ist bereits registriert.',
+        'PASSKEY_ALREADY_REGISTERED',
+      );
     }
 
     await this.prisma.authIdentity.create({
@@ -589,7 +668,10 @@ export class AuthService {
     await this.assertPasskeyEnabled();
     const credentialId: string | undefined = response?.id;
     if (!credentialId) {
-      throw new BadRequestException('Missing credential id in response.');
+      throw new AppBadRequestException(
+        'Die Antwort enthält keine Credential-ID.',
+        'PASSKEY_CREDENTIAL_ID_MISSING',
+      );
     }
 
     const identity = await this.prisma.authIdentity.findUnique({
@@ -598,7 +680,10 @@ export class AuthService {
     });
 
     if (!identity || !identity.publicKey || identity.signCount === null) {
-      throw new UnauthorizedException('Unknown passkey.');
+      throw new AppUnauthorizedException(
+        'Unbekannter Passkey.',
+        'UNKNOWN_PASSKEY',
+      );
     }
 
     const verification = await this.webauthn.verifyAuthentication(
@@ -613,7 +698,15 @@ export class AuthService {
     );
 
     if (!verification.verified) {
-      throw new UnauthorizedException('Passkey verification failed.');
+      await this.logAuthEvent(
+        'login_failed',
+        identity.user.id,
+        `Fehlgeschlagene Passkey-Anmeldung für "${identity.user.email}"`,
+      );
+      throw new AppUnauthorizedException(
+        'Die Passkey-Verifizierung ist fehlgeschlagen.',
+        'PASSKEY_VERIFICATION_FAILED',
+      );
     }
 
     await this.prisma.authIdentity.update({
@@ -622,9 +715,18 @@ export class AuthService {
     });
 
     if (!identity.user.isActive || identity.user.deletedAt) {
-      throw new UnauthorizedException('User is inactive.');
+      throw new AppUnauthorizedException(
+        'Benutzer ist inaktiv.',
+        'USER_INACTIVE',
+      );
     }
 
-    return this.issueTokens(identity.user);
+    const tokens = await this.issueTokens(identity.user);
+    await this.logAuthEvent(
+      'login',
+      identity.user.id,
+      `Anmeldung von "${identity.user.email}" via Passkey`,
+    );
+    return tokens;
   }
 }

@@ -1,15 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { AuditService } from '../audit/audit.service';
+import { AppNotFoundException } from '../common/exceptions/app.exception';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 
+// Create/update/delete are audited automatically by AuditInterceptor (see
+// the @Audited() decorator on LocationsController).
 @Injectable()
 export class LocationsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly audit: AuditService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   findAll() {
     return this.prisma.location.findMany({
@@ -24,50 +23,27 @@ export class LocationsService {
       where: { id, deletedAt: null },
       include: { rooms: { where: { deletedAt: null } } },
     });
-    if (!location) throw new NotFoundException('Location not found.');
+    if (!location) throw new AppNotFoundException('Standort nicht gefunden.');
     return location;
   }
 
-  async create(dto: CreateLocationDto, actorId?: string) {
-    const location = await this.prisma.location.create({ data: dto });
-    await this.audit.log({
-      entityType: 'Location',
-      entityId: location.id,
-      action: 'create',
-      summary: `Standort "${location.name}" angelegt`,
-      userId: actorId,
-    });
-    return location;
+  async create(dto: CreateLocationDto) {
+    return this.prisma.location.create({ data: dto });
   }
 
-  async update(id: string, dto: UpdateLocationDto, actorId?: string) {
-    const before = await this.findOne(id);
-    const location = await this.prisma.location.update({
+  async update(id: string, dto: UpdateLocationDto) {
+    await this.findOne(id);
+    return this.prisma.location.update({
       where: { id },
       data: dto,
     });
-    await this.audit.log({
-      entityType: 'Location',
-      entityId: id,
-      action: 'update',
-      summary: `Standort "${before.name}" aktualisiert`,
-      userId: actorId,
-    });
-    return location;
   }
 
-  async remove(id: string, actorId?: string) {
-    const location = await this.findOne(id);
+  async remove(id: string) {
+    await this.findOne(id);
     await this.prisma.location.update({
       where: { id },
       data: { deletedAt: new Date() },
-    });
-    await this.audit.log({
-      entityType: 'Location',
-      entityId: id,
-      action: 'delete',
-      summary: `Standort "${location.name}" gelöscht`,
-      userId: actorId,
     });
   }
 }

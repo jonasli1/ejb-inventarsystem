@@ -12,13 +12,10 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import {
-  CurrentUser,
-  type AuthenticatedUser,
-} from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { PERMISSIONS } from '../common/constants/permissions';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { Audited } from '../audit/audited.decorator';
 import { GroupsService } from './groups.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
@@ -43,30 +40,26 @@ export class GroupsController {
     return this.groupsService.findOne(id);
   }
 
+  @Audited('Group', 'group')
   @RequirePermissions(PERMISSIONS.GROUPS_CREATE)
   @Post()
-  create(@Body() dto: CreateGroupDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.groupsService.create(dto, user.id);
+  create(@Body() dto: CreateGroupDto) {
+    return this.groupsService.create(dto);
   }
 
+  @Audited('Group', 'group')
   @RequirePermissions(PERMISSIONS.GROUPS_UPDATE)
   @Put(':id')
-  update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateGroupDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.groupsService.update(id, dto, user.id);
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateGroupDto) {
+    return this.groupsService.update(id, dto);
   }
 
+  @Audited('Group', 'group')
   @RequirePermissions(PERMISSIONS.GROUPS_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
-  async remove(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    await this.groupsService.remove(id, user.id);
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
+    await this.groupsService.remove(id);
   }
 
   @RequirePermissions(PERMISSIONS.GROUPS_READ)
@@ -74,6 +67,12 @@ export class GroupsController {
   listRoles(@Param('id', ParseUUIDPipe) id: string) {
     return this.groupsService.listRoles(id);
   }
+
+  // Sub-resource routes below intentionally have no @Audited(): their `:id`
+  // param is the *group's* id, not the mapping/scope row being mutated, so
+  // the interceptor's generic before/after lookup would describe the wrong
+  // entity. These stay uncovered by the automatic audit, same as before
+  // this change (no manual AuditService.log() existed for them either).
 
   @RequirePermissions(PERMISSIONS.GROUPS_UPDATE)
   @Post(':id/roles')

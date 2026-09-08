@@ -1,7 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { RolesService } from './roles.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { AuditService } from '../audit/audit.service';
 import { NotificationPreferencesService } from '../notifications/notification-preferences.service';
 
 describe('RolesService', () => {
@@ -16,7 +15,6 @@ describe('RolesService', () => {
     rolePermission: { deleteMany: jest.Mock };
     userRole: { findMany: jest.Mock };
   };
-  let audit: { log: jest.Mock };
   let notificationPreferences: { pruneForUsers: jest.Mock };
 
   beforeEach(() => {
@@ -30,13 +28,11 @@ describe('RolesService', () => {
       rolePermission: { deleteMany: jest.fn().mockResolvedValue({}) },
       userRole: { findMany: jest.fn().mockResolvedValue([]) },
     };
-    audit = { log: jest.fn().mockResolvedValue(undefined) };
     notificationPreferences = {
       pruneForUsers: jest.fn().mockResolvedValue(undefined),
     };
     service = new RolesService(
       prisma as unknown as PrismaService,
-      audit as unknown as AuditService,
       notificationPreferences as unknown as NotificationPreferencesService,
     );
   });

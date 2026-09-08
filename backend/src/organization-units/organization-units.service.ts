@@ -1,8 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AppNotFoundException } from '../common/exceptions/app.exception';
 import { CreateOrganizationUnitDto } from './dto/create-organization-unit.dto';
 import { UpdateOrganizationUnitDto } from './dto/update-organization-unit.dto';
 
+// Create/update/delete are audited automatically by AuditInterceptor (see
+// the @Audited() decorator on OrganizationUnitsController).
 @Injectable()
 export class OrganizationUnitsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -11,7 +14,8 @@ export class OrganizationUnitsService {
     const organization = await this.prisma.organization.findFirst({
       where: { id: organizationId, deletedAt: null },
     });
-    if (!organization) throw new NotFoundException('Organization not found.');
+    if (!organization)
+      throw new AppNotFoundException('Organisation nicht gefunden.');
   }
 
   async findAll(organizationId: string) {
@@ -26,7 +30,8 @@ export class OrganizationUnitsService {
     const unit = await this.prisma.organizationUnit.findFirst({
       where: { id, organizationId, deletedAt: null },
     });
-    if (!unit) throw new NotFoundException('Organization unit not found.');
+    if (!unit)
+      throw new AppNotFoundException('Organisationsbereich nicht gefunden.');
     return unit;
   }
 

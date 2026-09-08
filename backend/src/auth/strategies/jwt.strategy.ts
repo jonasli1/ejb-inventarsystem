@@ -1,9 +1,10 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getEffectivePermissions } from '../../common/utils/effective-permissions';
+import { AppUnauthorizedException } from '../../common/exceptions/app.exception';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 export interface JwtPayload {
@@ -30,7 +31,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
 
     if (!user || !user.isActive || user.deletedAt) {
-      throw new UnauthorizedException('User not found or inactive.');
+      throw new AppUnauthorizedException(
+        'Benutzer nicht gefunden oder inaktiv.',
+        'UNAUTHENTICATED',
+      );
     }
 
     const permissions = await getEffectivePermissions(this.prisma, user.id);

@@ -20,7 +20,9 @@ import {
   RequireAnyPermission,
   RequirePermissions,
 } from '../common/decorators/permissions.decorator';
+import { AuditAction } from '@prisma/client';
 import { PERMISSIONS } from '../common/constants/permissions';
+import { Audited } from '../audit/audited.decorator';
 import { InventoryService } from './inventory.service';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto';
 import { UpdateInventoryItemDto } from './dto/update-inventory-item.dto';
@@ -62,6 +64,7 @@ export class InventoryController {
     return this.inventoryService.getAccessoryCandidates(id, query);
   }
 
+  @Audited('InventoryItem', 'inventory')
   @RequirePermissions(PERMISSIONS.INVENTORY_CREATE)
   @Post()
   create(
@@ -71,6 +74,7 @@ export class InventoryController {
     return this.inventoryService.create(dto, user.id);
   }
 
+  @Audited('InventoryItem', 'inventory')
   @RequireAnyPermission(
     PERMISSIONS.INVENTORY_UPDATE,
     PERMISSIONS.INVENTORY_CHANGE_INVENTORY_NUMBER,
@@ -85,6 +89,7 @@ export class InventoryController {
     return this.inventoryService.update(id, dto, user);
   }
 
+  @Audited('InventoryItem', 'inventory', AuditAction.update)
   @RequirePermissions(PERMISSIONS.INVENTORY_UPDATE)
   @Post(':id/move')
   move(
@@ -113,6 +118,7 @@ export class InventoryController {
     return this.inventoryService.removeAccessory(id, accessoryId);
   }
 
+  @Audited('InventoryItem', 'inventory')
   @RequirePermissions(PERMISSIONS.INVENTORY_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')

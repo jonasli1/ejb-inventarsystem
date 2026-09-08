@@ -11,12 +11,9 @@ import {
   Put,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import {
-  CurrentUser,
-  type AuthenticatedUser,
-} from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { PERMISSIONS } from '../common/constants/permissions';
+import { Audited } from '../audit/audited.decorator';
 import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
@@ -40,30 +37,26 @@ export class RolesController {
     return this.rolesService.findOne(id);
   }
 
+  @Audited('Role', 'role')
   @RequirePermissions(PERMISSIONS.ROLES_CREATE)
   @Post()
-  create(@Body() dto: CreateRoleDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.rolesService.create(dto, user.id);
+  create(@Body() dto: CreateRoleDto) {
+    return this.rolesService.create(dto);
   }
 
+  @Audited('Role', 'role')
   @RequirePermissions(PERMISSIONS.ROLES_UPDATE)
   @Put(':id')
-  update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateRoleDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.rolesService.update(id, dto, user.id);
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateRoleDto) {
+    return this.rolesService.update(id, dto);
   }
 
+  @Audited('Role', 'role')
   @RequirePermissions(PERMISSIONS.ROLES_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
-  async remove(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    await this.rolesService.remove(id, user.id);
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
+    await this.rolesService.remove(id);
   }
 
   @RequirePermissions(PERMISSIONS.PERMISSIONS_ASSIGN)

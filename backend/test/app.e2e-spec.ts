@@ -4198,6 +4198,112 @@ describe('Inventarsystem API (e2e)', () => {
         .expect(404);
     });
   });
+
+  describe('audit log (audit.read permission, GET /audit)', () => {
+    let adminToken: string;
+
+    beforeAll(async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+      adminToken = login.body.accessToken;
+    });
+
+    it('refuses access without audit.read', async () => {
+      const viewerLogin = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'viewer@example.com', password: 'ViewerPass123!' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/audit')
+        .set('Authorization', `Bearer ${viewerLogin.body.accessToken}`)
+        .expect(403);
+    });
+
+    it('records a before/after snapshot for a plain CRUD mutation and finds it via category + entity filters', async () => {
+      const article = await request(app.getHttpServer())
+        .post('/api/v1/articles')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: 'Audit Test Article' })
+        .expect(201);
+
+      const updated = await request(app.getHttpServer())
+        .put(`/api/v1/articles/${article.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: 'Audit Test Article (renamed)' })
+        .expect(200);
+      expect(updated.body.name).toBe('Audit Test Article (renamed)');
+
+      const log = await request(app.getHttpServer())
+        .get(
+          `/api/v1/audit?category=article&entityType=Article&entityId=${article.body.id}`,
+        )
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(log.body.data.length).toBeGreaterThanOrEqual(2);
+      const updateEntry = log.body.data.find(
+        (e: { action: string }) => e.action === 'update',
+      );
+      expect(updateEntry).toBeDefined();
+      expect(updateEntry.beforeData.name).toBe('Audit Test Article');
+      expect(updateEntry.afterData.name).toBe(
+        'Audit Test Article (renamed)',
+      );
+      expect(updateEntry.user.id).toBeDefined();
+
+      const createEntry = log.body.data.find(
+        (e: { action: string }) => e.action === 'create',
+      );
+      expect(createEntry).toBeDefined();
+      expect(createEntry.beforeData).toBeNull();
+      expect(createEntry.afterData.name).toBe('Audit Test Article');
+    });
+
+    it('logs a successful login under the auth category', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+
+      const log = await request(app.getHttpServer())
+        .get('/api/v1/audit?category=auth')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(
+        log.body.data.some(
+          (e: { action: string }) => e.action === 'login',
+        ),
+      ).toBe(true);
+    });
+
+    it('paginates with a keyset cursor (no duplicate/skipped rows across pages)', async () => {
+      const firstPage = await request(app.getHttpServer())
+        .get('/api/v1/audit?limit=3')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect(firstPage.body.data.length).toBeLessThanOrEqual(3);
+      expect(firstPage.body.nextCursor).toBeDefined();
+
+      if (firstPage.body.nextCursor) {
+        const secondPage = await request(app.getHttpServer())
+          .get(
+            `/api/v1/audit?limit=3&cursor=${encodeURIComponent(firstPage.body.nextCursor)}`,
+          )
+          .set('Authorization', `Bearer ${adminToken}`)
+          .expect(200);
+        const firstIds = new Set(
+          firstPage.body.data.map((e: { id: string }) => e.id),
+        );
+        expect(
+          secondPage.body.data.every((e: { id: string }) => !firstIds.has(e.id)),
+        ).toBe(true);
+      }
+    });
+  });
 });
 
 async function resetDatabase(prisma: PrismaService) {

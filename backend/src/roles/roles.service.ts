@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { AuditService } from '../audit/audit.service';
 import { NotificationPreferencesService } from '../notifications/notification-preferences.service';
 import {
   AppForbiddenException,
@@ -14,11 +13,12 @@ import { UpdateRoleDto } from './dto/update-role.dto';
 // management entirely, so it is protected here regardless of who deletes it.
 const PROTECTED_ROLE_NAME = 'Admin';
 
+// Create/update/delete are audited automatically by AuditInterceptor (see
+// the @Audited() decorator on RolesController).
 @Injectable()
 export class RolesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService,
     private readonly notificationPreferences: NotificationPreferencesService,
   ) {}
 
@@ -38,19 +38,11 @@ export class RolesService {
     return role;
   }
 
-  async create(dto: CreateRoleDto, actorId?: string) {
-    const role = await this.prisma.role.create({ data: dto });
-    await this.audit.log({
-      entityType: 'Role',
-      entityId: role.id,
-      action: 'create',
-      summary: `Rolle "${role.name}" angelegt`,
-      userId: actorId,
-    });
-    return role;
+  async create(dto: CreateRoleDto) {
+    return this.prisma.role.create({ data: dto });
   }
 
-  async update(id: string, dto: UpdateRoleDto, actorId?: string) {
+  async update(id: string, dto: UpdateRoleDto) {
     const role = await this.findOne(id);
     if (
       role.name === PROTECTED_ROLE_NAME &&
@@ -62,18 +54,10 @@ export class RolesService {
         'PROTECTED_ROLE',
       );
     }
-    const updated = await this.prisma.role.update({ where: { id }, data: dto });
-    await this.audit.log({
-      entityType: 'Role',
-      entityId: id,
-      action: 'update',
-      summary: `Rolle "${role.name}" aktualisiert`,
-      userId: actorId,
-    });
-    return updated;
+    return this.prisma.role.update({ where: { id }, data: dto });
   }
 
-  async remove(id: string, actorId?: string) {
+  async remove(id: string) {
     const role = await this.findOne(id);
     if (role.name === PROTECTED_ROLE_NAME) {
       throw new AppForbiddenException(
@@ -82,13 +66,6 @@ export class RolesService {
       );
     }
     await this.prisma.role.delete({ where: { id } });
-    await this.audit.log({
-      entityType: 'Role',
-      entityId: id,
-      action: 'delete',
-      summary: `Rolle "${role.name}" gelöscht`,
-      userId: actorId,
-    });
   }
 
   async assignPermission(roleId: string, permissionId: string) {

@@ -1,10 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AuthProvider, GroupSource, RoleAssignSource } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,6 +6,12 @@ import {
   paginate,
   PaginationQueryDto,
 } from '../common/dto/pagination-query.dto';
+import {
+  AppBadRequestException,
+  AppConflictException,
+  AppForbiddenException,
+  AppNotFoundException,
+} from '../common/exceptions/app.exception';
 import { AuditService } from '../audit/audit.service';
 import { GroupsService } from '../groups/groups.service';
 import { NotificationPreferencesService } from '../notifications/notification-preferences.service';
@@ -56,23 +56,26 @@ export class UsersService {
         userRoles: { include: { role: true } },
       },
     });
-    if (!user) throw new NotFoundException('User not found.');
+    if (!user) throw new AppNotFoundException('Benutzer nicht gefunden.');
     return user;
   }
 
-  async create(dto: CreateUserDto, actorId?: string) {
+  async create(dto: CreateUserDto) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
     if (existing) {
-      throw new BadRequestException('A user with this email already exists.');
+      throw new AppConflictException(
+        'Eine Person mit dieser E-Mail-Adresse existiert bereits.',
+        'EMAIL_ALREADY_EXISTS',
+      );
     }
 
     const passwordHash = dto.password
       ? await argon2.hash(dto.password)
       : undefined;
 
-    const user = await this.prisma.user.create({
+    return this.prisma.user.create({
       data: {
         email: dto.email,
         displayName: dto.displayName,
@@ -88,46 +91,25 @@ export class UsersService {
           : undefined,
       },
     });
-    await this.audit.log({
-      entityType: 'User',
-      entityId: user.id,
-      action: 'create',
-      summary: `Benutzer "${user.displayName}" (${user.email}) angelegt`,
-      userId: actorId,
-    });
-    return user;
   }
 
-  async update(id: string, dto: UpdateUserDto, actorId?: string) {
-    const before = await this.findOne(id);
-    const user = await this.prisma.user.update({ where: { id }, data: dto });
-    await this.audit.log({
-      entityType: 'User',
-      entityId: user.id,
-      action: 'update',
-      summary: `Benutzer "${before.displayName}" aktualisiert`,
-      userId: actorId,
-    });
-    return user;
+  async update(id: string, dto: UpdateUserDto) {
+    await this.findOne(id);
+    return this.prisma.user.update({ where: { id }, data: dto });
   }
 
   async remove(id: string, currentUserId?: string) {
-    const user = await this.findOne(id);
+    await this.findOne(id);
     if (currentUserId && id === currentUserId) {
-      throw new ForbiddenException('You cannot delete your own account.');
+      throw new AppForbiddenException(
+        'Sie können Ihr eigenes Konto nicht löschen.',
+        'CANNOT_DELETE_SELF',
+      );
     }
-    const removed = await this.prisma.user.update({
+    return this.prisma.user.update({
       where: { id },
       data: { deletedAt: new Date(), isActive: false },
     });
-    await this.audit.log({
-      entityType: 'User',
-      entityId: id,
-      action: 'delete',
-      summary: `Benutzer "${user.displayName}" (${user.email}) gelöscht`,
-      userId: currentUserId,
-    });
-    return removed;
   }
 
   // -----------------------------------------------------------------------
@@ -184,7 +166,10 @@ export class UsersService {
       where: { email: dto.email },
     });
     if (existing) {
-      throw new ConflictException('A user with this email already exists.');
+      throw new AppConflictException(
+        'Eine Person mit dieser E-Mail-Adresse existiert bereits.',
+        'EMAIL_ALREADY_EXISTS',
+      );
     }
 
     const [updated] = await this.prisma.$transaction([
@@ -213,7 +198,7 @@ export class UsersService {
   async assignRole(userId: string, roleId: string) {
     await this.findOne(userId);
     const role = await this.prisma.role.findUnique({ where: { id: roleId } });
-    if (!role) throw new NotFoundException('Role not found.');
+    if (!role) throw new AppNotFoundException('Rolle nicht gefunden.');
 
     // A manual (re-)assignment always wins over a group-derived one, so it
     // survives even if the underlying group→role mapping is later removed.
@@ -230,8 +215,9 @@ export class UsersService {
     });
     if (!existing) return;
     if (existing.source === RoleAssignSource.group) {
-      throw new BadRequestException(
-        'This role was automatically granted via a group membership and cannot be removed manually. Remove the group membership or the group→role mapping instead.',
+      throw new AppBadRequestException(
+        'Diese Rolle wurde automatisch über eine Gruppenmitgliedschaft vergeben und kann nicht manuell entfernt werden. Entfernen Sie stattdessen die Gruppenmitgliedschaft oder die Gruppe-Rolle-Zuordnung.',
+        'ROLE_FROM_GROUP',
       );
     }
     await this.prisma.userRole.deleteMany({ where: { userId, roleId } });
@@ -255,7 +241,7 @@ export class UsersService {
     const group = await this.prisma.group.findFirst({
       where: { id: groupId, deletedAt: null },
     });
-    if (!group) throw new NotFoundException('Group not found.');
+    if (!group) throw new AppNotFoundException('Gruppe nicht gefunden.');
 
     const membership = await this.prisma.userGroup.upsert({
       where: { userId_groupId: { userId, groupId } },
@@ -272,8 +258,9 @@ export class UsersService {
     });
     if (!membership) return;
     if (membership.source !== GroupSource.manual) {
-      throw new BadRequestException(
-        'This membership originates from ChurchTools and cannot be removed manually. It will be removed automatically once it disappears from ChurchTools.',
+      throw new AppBadRequestException(
+        'Diese Mitgliedschaft stammt aus ChurchTools und kann nicht manuell entfernt werden. Sie wird automatisch entfernt, sobald sie in ChurchTools nicht mehr vorhanden ist.',
+        'MEMBERSHIP_FROM_CHURCHTOOLS',
       );
     }
     await this.prisma.userGroup.delete({ where: { id: membership.id } });

@@ -10,6 +10,7 @@ import { GroupsService } from '../groups/groups.service';
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../notifications/email.service';
 import { AppSettingsService } from '../settings/app-settings.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -36,6 +37,7 @@ describe('AuthService', () => {
     isChurchToolsEnabled: jest.Mock;
     isPasskeyEnabled: jest.Mock;
   };
+  let audit: { log: jest.Mock };
 
   const CONFIG_VALUES: Record<string, string> = {
     'jwt.accessSecret': 'access-secret',
@@ -75,6 +77,7 @@ describe('AuthService', () => {
       isChurchToolsEnabled: jest.fn().mockResolvedValue(true),
       isPasskeyEnabled: jest.fn().mockResolvedValue(true),
     };
+    audit = { log: jest.fn().mockResolvedValue(undefined) };
 
     service = new AuthService(
       prisma as unknown as PrismaService,
@@ -92,6 +95,7 @@ describe('AuthService', () => {
       users as unknown as UsersService,
       email as unknown as EmailService,
       appSettings as unknown as AppSettingsService,
+      audit as unknown as AuditService,
     );
   });
 

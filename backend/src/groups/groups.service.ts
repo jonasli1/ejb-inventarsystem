@@ -1,11 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { RoleAssignSource } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   paginate,
   PaginationQueryDto,
 } from '../common/dto/pagination-query.dto';
-import { AuditService } from '../audit/audit.service';
+import { AppNotFoundException } from '../common/exceptions/app.exception';
 import { NotificationPreferencesService } from '../notifications/notification-preferences.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
@@ -26,7 +26,6 @@ const SCOPE_INCLUDE = {
 export class GroupsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService,
     private readonly notificationPreferences: NotificationPreferencesService,
   ) {}
 
@@ -53,7 +52,7 @@ export class GroupsService {
       where: { id, deletedAt: null },
       include: SCOPE_INCLUDE,
     });
-    if (!group) throw new NotFoundException('Group not found.');
+    if (!group) throw new AppNotFoundException('Gruppe nicht gefunden.');
     return group;
   }
 
@@ -64,56 +63,34 @@ export class GroupsService {
     const org = await this.prisma.organization.findFirst({
       where: { id: organizationId, deletedAt: null },
     });
-    if (!org) throw new NotFoundException('Organization not found.');
+    if (!org) throw new AppNotFoundException('Organisation nicht gefunden.');
 
     if (organizationUnitId) {
       const unit = await this.prisma.organizationUnit.findFirst({
         where: { id: organizationUnitId, organizationId, deletedAt: null },
       });
-      if (!unit) throw new NotFoundException('Organization unit not found.');
+      if (!unit)
+        throw new AppNotFoundException('Organisationsbereich nicht gefunden.');
     }
   }
 
-  async create(dto: CreateGroupDto, actorId?: string) {
-    const group = await this.prisma.group.create({ data: dto });
-    await this.audit.log({
-      entityType: 'Group',
-      entityId: group.id,
-      action: 'create',
-      summary: `Gruppe "${group.name}" angelegt`,
-      userId: actorId,
-    });
-    return group;
+  async create(dto: CreateGroupDto) {
+    return this.prisma.group.create({ data: dto });
   }
 
-  async update(id: string, dto: UpdateGroupDto, actorId?: string) {
-    const before = await this.findOne(id);
-    const group = await this.prisma.group.update({ where: { id }, data: dto });
-    await this.audit.log({
-      entityType: 'Group',
-      entityId: id,
-      action: 'update',
-      summary: `Gruppe "${before.name}" aktualisiert`,
-      userId: actorId,
-    });
-    return group;
+  async update(id: string, dto: UpdateGroupDto) {
+    await this.findOne(id);
+    return this.prisma.group.update({ where: { id }, data: dto });
   }
 
-  async remove(id: string, actorId?: string) {
-    const group = await this.findOne(id);
+  async remove(id: string) {
+    await this.findOne(id);
     await this.prisma.group.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
     // Members lose any role they only held because of this group.
     await this.syncGroupMembersRoles(id);
-    await this.audit.log({
-      entityType: 'Group',
-      entityId: id,
-      action: 'delete',
-      summary: `Gruppe "${group.name}" gelöscht`,
-      userId: actorId,
-    });
   }
 
   // -----------------------------------------------------------------------
@@ -131,7 +108,7 @@ export class GroupsService {
   async assignRole(groupId: string, roleId: string) {
     await this.findOne(groupId);
     const role = await this.prisma.role.findUnique({ where: { id: roleId } });
-    if (!role) throw new NotFoundException('Role not found.');
+    if (!role) throw new AppNotFoundException('Rolle nicht gefunden.');
 
     const mapping = await this.prisma.groupRole.upsert({
       where: { groupId_roleId: { groupId, roleId } },
