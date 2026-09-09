@@ -1,32 +1,47 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Plus, LayoutGrid, List as ListIcon, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
 import { api } from '@/lib/api-client';
 import { useArticles, useCategories, useLocations, useOrganizations, useRooms } from '@/lib/reference-data';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
-import type { GroupedInventoryEntry, InventoryItem, InventoryStatus, PaginatedResult } from '@/lib/api-types';
+import type { CursorResult, GroupedInventoryEntry, InventoryItem, InventoryStatus, PaginatedResult } from '@/lib/api-types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { InventoryStatusBadge } from '@/components/ui/Badge';
 import { INVENTORY_STATUS_LABEL } from '@/lib/status-labels';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { Spinner } from '@/components/ui/Spinner';
 import { ExportButtons } from '@/components/ui/ExportButtons';
-import { ArticleImageThumbnail } from '@/components/ui/ArticleImageThumbnail';
+import { VirtualList } from '@/components/ui/VirtualList';
 import { downloadExport } from '@/lib/export';
 import { useAuth } from '@/auth/useAuth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { InventoryItemCreateModal } from './InventoryItemCreateModal';
 import { InventoryDetailModal } from './InventoryDetailModal';
+import { InventoryItemRow } from './InventoryItemRow';
 import { FilterMenu, FILTER_TYPE_LABEL, type FilterValueOption, type InventoryFilterType } from './FilterMenu';
 
 // This filter includes "borrowed" (unlike the manual status picker) since
 // filtering by it is a legitimate read-only query.
 const STATUS_OPTIONS: InventoryStatus[] = ['available', 'borrowed', 'maintenance', 'defect', 'retired', 'installed'];
+
+const ROW_HEIGHT_ESTIMATE = 56;
+
+function ColumnHeader() {
+  return (
+    <div className="hidden items-center gap-3 border-b border-border px-5 py-2.5 text-left text-xs font-medium text-muted sm:flex">
+      <span className="w-9" />
+      <span className="w-28">Inventarnummer</span>
+      <span className="w-48">Artikel</span>
+      <span className="w-32">Status</span>
+      <span className="flex-1">Standort / Raum</span>
+      <span className="w-40">Eigentümer</span>
+    </div>
+  );
+}
 
 export function InventoryPage() {
   const { hasPermission } = useAuth();
@@ -59,17 +74,14 @@ export function InventoryPage() {
     queryKey: ['inventory', 'suggestions', debouncedSearch],
     queryFn: async () =>
       (
-        await api.get<PaginatedResult<InventoryItem>>('/inventory', {
-          params: { search: debouncedSearch, pageSize: 6 },
+        await api.get<CursorResult<InventoryItem>>('/inventory', {
+          params: { search: debouncedSearch, limit: 6 },
         })
       ).data.data,
     enabled: debouncedSearch.trim().length >= 2,
   });
 
-  const filters = {
-    page,
-    pageSize: 20,
-    grouped,
+  const commonFilters = {
     ...(status ? { status } : {}),
     ...(locationId ? { locationId } : {}),
     ...(roomId ? { roomId } : {}),
@@ -79,15 +91,35 @@ export function InventoryPage() {
     ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
   };
 
-  const query = useQuery({
-    queryKey: ['inventory', filters],
+  // Grouped view stays small/bounded by article count - classic offset
+  // pagination, same as every other list in the app.
+  const groupedQuery = useQuery({
+    queryKey: ['inventory', 'grouped', page, commonFilters],
     queryFn: async () =>
       (
-        await api.get<PaginatedResult<InventoryItem | GroupedInventoryEntry>>('/inventory', {
-          params: filters,
+        await api.get<PaginatedResult<GroupedInventoryEntry>>('/inventory', {
+          params: { ...commonFilters, grouped: true, page, pageSize: 20 },
         })
       ).data,
+    enabled: grouped,
   });
+
+  // Flat view is the one expected to grow past 1M rows - keyset/cursor
+  // pagination via infinite scroll, windowed rendering so only the rows
+  // actually on screen are ever mounted.
+  const flatQuery = useInfiniteQuery({
+    queryKey: ['inventory', 'flat', commonFilters],
+    queryFn: async ({ pageParam }: { pageParam: string | undefined }) =>
+      (
+        await api.get<CursorResult<InventoryItem>>('/inventory', {
+          params: { ...commonFilters, cursor: pageParam, limit: 50 },
+        })
+      ).data,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled: !grouped,
+  });
+  const flatItems = useMemo(() => flatQuery.data?.pages.flatMap((p) => p.data) ?? [], [flatQuery.data]);
 
   const resetFilters = () => {
     setStatus('');
@@ -304,50 +336,72 @@ export function InventoryPage() {
       </Card>
 
       <Card>
-        {query.isLoading ? (
+        {grouped ? (
+          groupedQuery.isLoading ? (
+            <div className="flex justify-center py-16">
+              <Spinner />
+            </div>
+          ) : !groupedQuery.data || groupedQuery.data.data.length === 0 ? (
+            <EmptyState title="Keine Objekte gefunden" description="Passe die Filter an oder lege ein neues Objekt an." />
+          ) : (
+            <>
+              <div className="divide-y divide-border">
+                {groupedQuery.data.data.map((entry) => (
+                  <div key={entry.article.id}>
+                    <button
+                      onClick={() =>
+                        setExpandedArticle(expandedArticle === entry.article.id ? null : entry.article.id)
+                      }
+                      className="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-canvas"
+                    >
+                      {expandedArticle === entry.article.id ? (
+                        <ChevronDown size={16} className="text-muted" />
+                      ) : (
+                        <ChevronRight size={16} className="text-muted" />
+                      )}
+                      <span className="font-medium text-ink">{entry.article.name}</span>
+                      <span className="text-sm text-muted">
+                        {entry.stock.total} gesamt · {entry.stock.available} verfügbar · {entry.stock.borrowed}{' '}
+                        ausgeliehen
+                      </span>
+                    </button>
+                    {expandedArticle === entry.article.id && (
+                      <div>
+                        {entry.units.map((item) => (
+                          <InventoryItemRow key={item.id} item={item} onSelect={setSelectedItem} nested />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <Pagination
+                page={groupedQuery.data.meta.page}
+                totalPages={groupedQuery.data.meta.totalPages}
+                total={groupedQuery.data.meta.total}
+                onPageChange={setPage}
+              />
+            </>
+          )
+        ) : flatQuery.isLoading ? (
           <div className="flex justify-center py-16">
             <Spinner />
           </div>
-        ) : !query.data || query.data.data.length === 0 ? (
+        ) : flatItems.length === 0 ? (
           <EmptyState title="Keine Objekte gefunden" description="Passe die Filter an oder lege ein neues Objekt an." />
-        ) : grouped ? (
-          <div className="divide-y divide-border">
-            {(query.data.data as GroupedInventoryEntry[]).map((entry) => (
-              <div key={entry.article.id}>
-                <button
-                  onClick={() =>
-                    setExpandedArticle(expandedArticle === entry.article.id ? null : entry.article.id)
-                  }
-                  className="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-canvas"
-                >
-                  {expandedArticle === entry.article.id ? (
-                    <ChevronDown size={16} className="text-muted" />
-                  ) : (
-                    <ChevronRight size={16} className="text-muted" />
-                  )}
-                  <span className="font-medium text-ink">{entry.article.name}</span>
-                  <span className="text-sm text-muted">
-                    {entry.stock.total} gesamt · {entry.stock.available} verfügbar · {entry.stock.borrowed}{' '}
-                    ausgeliehen
-                  </span>
-                </button>
-                {expandedArticle === entry.article.id && (
-                  <ItemsTable items={entry.units} onSelect={setSelectedItem} nested />
-                )}
-              </div>
-            ))}
-          </div>
         ) : (
-          <ItemsTable items={query.data.data as InventoryItem[]} onSelect={setSelectedItem} />
-        )}
-
-        {query.data && (
-          <Pagination
-            page={query.data.meta.page}
-            totalPages={query.data.meta.totalPages}
-            total={query.data.meta.total}
-            onPageChange={setPage}
-          />
+          <>
+            <ColumnHeader />
+            <VirtualList
+              items={flatItems}
+              estimateSize={ROW_HEIGHT_ESTIMATE}
+              className="max-h-[65vh]"
+              hasMore={flatQuery.hasNextPage}
+              isFetchingMore={flatQuery.isFetchingNextPage}
+              onEndReached={() => void flatQuery.fetchNextPage()}
+              renderItem={(item) => <InventoryItemRow item={item} onSelect={setSelectedItem} />}
+            />
+          </>
         )}
       </Card>
 
@@ -355,57 +409,6 @@ export function InventoryPage() {
       {selectedItem && (
         <InventoryDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />
       )}
-    </div>
-  );
-}
-
-function ItemsTable({
-  items,
-  onSelect,
-  nested,
-}: {
-  items: InventoryItem[];
-  onSelect: (item: InventoryItem) => void;
-  nested?: boolean;
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        {!nested && (
-          <thead>
-            <tr className="border-b border-border text-left text-xs font-medium text-muted">
-              <th className="w-14 px-5 py-2.5" />
-              <th className="px-5 py-2.5">Inventarnummer</th>
-              <th className="px-5 py-2.5">Artikel</th>
-              <th className="px-5 py-2.5">Status</th>
-              <th className="px-5 py-2.5">Standort / Raum</th>
-              <th className="px-5 py-2.5">Eigentümer</th>
-            </tr>
-          </thead>
-        )}
-        <tbody>
-          {items.map((item) => (
-            <tr
-              key={item.id}
-              onClick={() => onSelect(item)}
-              className={`cursor-pointer border-b border-border last:border-0 hover:bg-canvas ${nested ? 'bg-canvas/40' : ''}`}
-            >
-              <td className={`py-2.5 ${nested ? 'pl-12' : 'pl-5'}`}>
-                <ArticleImageThumbnail articleId={item.articleId} size="h-8 w-8" />
-              </td>
-              <td className="px-5 py-2.5 font-mono text-xs text-ink">{item.inventoryNumber ?? '–'}</td>
-              <td className="px-5 py-2.5 text-ink">{item.article.name}</td>
-              <td className="px-5 py-2.5">
-                <InventoryStatusBadge status={item.status} />
-              </td>
-              <td className="px-5 py-2.5 text-muted">
-                {item.location.name} / {item.room.name}
-              </td>
-              <td className="px-5 py-2.5 text-muted">{item.ownerOrganization.name}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
