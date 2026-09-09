@@ -12,6 +12,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/toast';
 import { useAuth } from '@/auth/useAuth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { PERMISSION_INFO } from '@/lib/permission-labels';
 
 export function GroupDetailModal({ groupId, onClose }: { groupId: string; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -108,9 +109,9 @@ export function GroupDetailModal({ groupId, onClose }: { groupId: string; onClos
           <p className="mb-3 text-xs text-muted">
             Mitglieder dieser Gruppe gelten für die organisations-/untereinheiten-bezogene
             Ausleihe-Verwaltung (Berechtigungen{' '}
-            <code className="rounded bg-black/5 px-1 py-0.5">loans.manage</code> und{' '}
-            <code className="rounded bg-black/5 px-1 py-0.5">loans.spend</code>) als zugehörig zu den
-            hier zugeordneten Organisationen bzw. Untereinheiten. Eine Gruppe kann mehrere
+            <span className="font-medium text-ink">{PERMISSION_INFO[PERMISSIONS.LOANS_MANAGE].label}</span> und{' '}
+            <span className="font-medium text-ink">{PERMISSION_INFO[PERMISSIONS.LOANS_SPEND].label}</span>) als
+            zugehörig zu den hier zugeordneten Organisationen bzw. Untereinheiten. Eine Gruppe kann mehrere
             Zuordnungen haben.
           </p>
           <div className="mb-3 flex flex-wrap gap-1.5">

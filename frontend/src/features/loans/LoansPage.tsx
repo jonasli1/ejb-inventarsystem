@@ -16,6 +16,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { Spinner } from '@/components/ui/Spinner';
 import { useAuth } from '@/auth/useAuth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { PERMISSION_INFO } from '@/lib/permission-labels';
 import { LoanCreateModal } from './LoanCreateModal';
 import { LoanDetailModal } from './LoanDetailModal';
 import { LoanTemplatesModal } from './LoanTemplatesModal';
@@ -83,7 +84,7 @@ export function LoansPage() {
         <Card>
           <div className="p-8 text-center text-sm text-muted">
             Du kannst neue Ausleihen beantragen. Zum Einsehen bestehender Ausleihen fehlt dir die
-            Berechtigung <code className="rounded bg-black/5 px-1 py-0.5">loans.read</code>.
+            Berechtigung <span className="font-medium text-ink">{PERMISSION_INFO[PERMISSIONS.LOANS_READ].label}</span>.
             Direkt nach dem Anlegen kannst du eine Ausleihe trotzdem im Detail einsehen.
           </div>
         </Card>
