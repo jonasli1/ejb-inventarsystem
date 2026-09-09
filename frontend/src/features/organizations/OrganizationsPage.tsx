@@ -72,9 +72,9 @@ export function OrganizationsPage() {
             <ul className="divide-y divide-border">
               {organizations.map((o) => (
                 <li key={o.id}>
-                  <button
+                  <div
                     onClick={() => setSelectedId(o.id)}
-                    className={`flex w-full items-center justify-between px-5 py-3 text-left text-sm hover:bg-canvas ${
+                    className={`flex w-full cursor-pointer items-center justify-between px-5 py-3 text-left text-sm hover:bg-canvas ${
                       selected?.id === o.id ? 'bg-brand-50 text-brand-700' : 'text-ink'
                     }`}
                   >
@@ -111,7 +111,7 @@ export function OrganizationsPage() {
                         )}
                       </span>
                     )}
-                  </button>
+                  </div>
                 </li>
               ))}
             </ul>

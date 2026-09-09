@@ -72,9 +72,9 @@ export function LocationsPage() {
             <ul className="divide-y divide-border">
               {locations.map((l) => (
                 <li key={l.id}>
-                  <button
+                  <div
                     onClick={() => setSelectedId(l.id)}
-                    className={`flex w-full items-center justify-between px-5 py-3 text-left text-sm hover:bg-canvas ${
+                    className={`flex w-full cursor-pointer items-center justify-between px-5 py-3 text-left text-sm hover:bg-canvas ${
                       selected?.id === l.id ? 'bg-brand-50 text-brand-700' : 'text-ink'
                     }`}
                   >
@@ -114,7 +114,7 @@ export function LocationsPage() {
                         )}
                       </span>
                     )}
-                  </button>
+                  </div>
                 </li>
               ))}
             </ul>

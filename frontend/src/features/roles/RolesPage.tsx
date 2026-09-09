@@ -109,9 +109,9 @@ export function RolesPage() {
           <ul className="divide-y divide-border">
             {query.data.map((role) => (
               <li key={role.id}>
-                <button
+                <div
                   onClick={() => setSelectedId(role.id)}
-                  className="flex w-full items-center justify-between px-5 py-3 text-left hover:bg-canvas"
+                  className="flex w-full cursor-pointer items-center justify-between px-5 py-3 text-left hover:bg-canvas"
                 >
                   <div>
                     <p className="text-sm font-medium text-ink">{role.name}</p>
@@ -147,7 +147,7 @@ export function RolesPage() {
                       )
                     )}
                   </span>
-                </button>
+                </div>
               </li>
             ))}
           </ul>

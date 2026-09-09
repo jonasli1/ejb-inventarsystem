@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { Download, FileText, Trash2, Upload } from 'lucide-react';
+import { Download, FileText, ImageOff, Trash2, Upload } from 'lucide-react';
 import { api, getApiErrorMessage } from '@/lib/api-client';
 import { downloadExport } from '@/lib/export';
 import { useAttachmentBlobUrl } from '@/lib/useAttachmentBlobUrl';
@@ -36,7 +36,7 @@ export function AttachmentThumbnail({
 }) {
   const isImage = attachment.mimeType.startsWith('image/');
   const [ref, inView] = useInView<HTMLDivElement>();
-  const { url } = useAttachmentBlobUrl(attachment.thumbnailUrl, isImage && inView);
+  const { url, isError } = useAttachmentBlobUrl(attachment.thumbnailUrl, isImage && inView);
   const lightbox = useLightbox();
 
   if (!isImage) {
@@ -59,6 +59,10 @@ export function AttachmentThumbnail({
               : undefined
           }
         />
+      ) : isError ? (
+        <div className="flex h-full w-full items-center justify-center" title="Datei nicht verfügbar">
+          <ImageOff size={14} className="text-muted" />
+        </div>
       ) : (
         <div className="flex h-full w-full items-center justify-center">
           {inView && <Spinner />}
