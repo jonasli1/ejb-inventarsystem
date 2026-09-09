@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import { useArticles } from '@/lib/reference-data';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
-import type { Article, InventoryItem, PaginatedResult } from '@/lib/api-types';
+import type { Article, CursorResult, InventoryItem } from '@/lib/api-types';
 import { INVENTORY_STATUS_LABEL } from '@/lib/status-labels';
 import { Input } from '@/components/ui/Input';
 import { ArticleImageThumbnail } from '@/components/ui/ArticleImageThumbnail';
@@ -46,8 +46,8 @@ export function ItemSearchSelect({
     queryKey: ['inventory', 'universal-search', debounced],
     queryFn: async () =>
       (
-        await api.get<PaginatedResult<InventoryItem>>('/inventory', {
-          params: { search: debounced, pageSize: 8 },
+        await api.get<CursorResult<InventoryItem>>('/inventory', {
+          params: { search: debounced, limit: 8 },
         })
       ).data.data,
     enabled: debounced.trim().length >= 2,
