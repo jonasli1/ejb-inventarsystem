@@ -62,11 +62,16 @@ export function ItemSearchSelect({
           .slice(0, 3)
           .map((a) => ({ kind: 'article', key: `article-${a.id}`, article: a }))
       : [];
-    const itemRows: Row[] = (query.data ?? []).map((i) => ({
-      kind: 'item',
-      key: `item-${i.id}`,
-      item: i,
-    }));
+    // Items that are themselves accessory of another object can't be loaned
+    // individually - they're only ever added automatically alongside their
+    // main object, so they don't show up as a selectable search result here.
+    const itemRows: Row[] = (query.data ?? [])
+      .filter((i) => !i.parentItemId)
+      .map((i) => ({
+        kind: 'item',
+        key: `item-${i.id}`,
+        item: i,
+      }));
     return [...articleRows, ...itemRows];
   }, [allowArticles, articles, debounced, query.data]);
 

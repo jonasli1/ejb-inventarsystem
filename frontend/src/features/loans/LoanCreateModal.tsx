@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { api, getApiErrorMessage } from '@/lib/api-client';
-import type { Article, InventoryItem, Loan, LoanTemplate } from '@/lib/api-types';
+import type { Article, InventoryItem, InventoryItemDetail, Loan, LoanTemplate } from '@/lib/api-types';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/toast';
 import { ItemSearchSelect } from '@/components/ui/ItemSearchSelect';
 import { useAuth } from '@/auth/useAuth';
@@ -17,9 +18,11 @@ type ItemMode = 'article' | 'item' | '';
 interface ItemRow {
   mode: ItemMode;
   articleId: string;
-  quantity: number;
+  quantity: number | '';
   inventoryItemId: string;
   label: string;
+  /** Set when this row was auto-added because it's accessory of another row's inventoryItemId. */
+  accessoryOfItemId?: string;
 }
 
 function emptyRow(): ItemRow {
@@ -115,7 +118,7 @@ export function LoanCreateModal({
             .filter((i) => (i.mode === 'article' ? i.articleId : i.inventoryItemId))
             .map((i) =>
               i.mode === 'article'
-                ? { articleId: i.articleId, quantity: i.quantity }
+                ? { articleId: i.articleId, quantity: i.quantity === '' || i.quantity < 1 ? 1 : i.quantity }
                 : { inventoryItemId: i.inventoryItemId },
             ),
         })
@@ -144,6 +147,50 @@ export function LoanCreateModal({
         next.push(emptyRow());
       }
       return next;
+    });
+  };
+
+  // Inventory items with accessories are automatically loaned out together -
+  // fetch the picked item's accessories and insert a row per accessory right
+  // after it, tagged so they're shown/removed as a unit with their parent.
+  const addAccessoryRows = async (parentItemId: string) => {
+    try {
+      const detail = (await api.get<InventoryItemDetail>(`/inventory/${parentItemId}`)).data;
+      if (detail.accessories.length === 0) return;
+      setItems((prev) => {
+        const parentIndex = prev.findIndex((r) => r.inventoryItemId === parentItemId && r.mode === 'item');
+        if (parentIndex === -1) return prev;
+        const existingIds = new Set(prev.map((r) => r.inventoryItemId).filter(Boolean));
+        const accessoryRows: ItemRow[] = detail.accessories
+          .filter((a) => !existingIds.has(a.id))
+          .map((a) => ({
+            mode: 'item',
+            articleId: '',
+            quantity: 1,
+            inventoryItemId: a.id,
+            label: a.inventoryNumber ? `${a.inventoryNumber} — ${a.article.name}` : a.article.name,
+            accessoryOfItemId: parentItemId,
+          }));
+        if (accessoryRows.length === 0) return prev;
+        const next = [...prev];
+        next.splice(parentIndex + 1, 0, ...accessoryRows);
+        return next;
+      });
+    } catch {
+      // Best-effort preview only - the backend still bundles accessories
+      // automatically at submit time even if this lookup fails.
+    }
+  };
+
+  const removeItem = (index: number) => {
+    setItems((prev) => {
+      const removed = prev[index];
+      return prev.filter((it, i) => {
+        if (i === index) return false;
+        // Removing a main object cascades to its auto-added accessory rows.
+        if (removed.inventoryItemId && it.accessoryOfItemId === removed.inventoryItemId) return false;
+        return true;
+      });
     });
   };
 
@@ -260,7 +307,7 @@ export function LoanCreateModal({
               <div key={index} className="flex items-start gap-2">
                 <ItemSearchSelect
                   selectedLabel={item.label}
-                  onSelectItem={(inventoryItem: InventoryItem) =>
+                  onSelectItem={(inventoryItem: InventoryItem) => {
                     updateItem(index, {
                       mode: 'item',
                       inventoryItemId: inventoryItem.id,
@@ -268,8 +315,10 @@ export function LoanCreateModal({
                       label: inventoryItem.inventoryNumber
                         ? `${inventoryItem.inventoryNumber} — ${inventoryItem.article.name}`
                         : inventoryItem.article.name,
-                    })
-                  }
+                      accessoryOfItemId: undefined,
+                    });
+                    void addAccessoryRows(inventoryItem.id);
+                  }}
                   onSelectArticle={(article: Article) =>
                     updateItem(index, {
                       mode: 'article',
@@ -277,6 +326,7 @@ export function LoanCreateModal({
                       inventoryItemId: '',
                       quantity: 1,
                       label: `${article.name} (nach Menge)`,
+                      accessoryOfItemId: undefined,
                     })
                   }
                   onClear={() =>
@@ -285,23 +335,36 @@ export function LoanCreateModal({
                       articleId: '',
                       inventoryItemId: '',
                       label: '',
+                      accessoryOfItemId: undefined,
                     })
                   }
                 />
+
+                {item.accessoryOfItemId && (
+                  <Badge tone="blue" className="mt-1.5 shrink-0">
+                    Zubehör
+                  </Badge>
+                )}
 
                 {item.mode === 'article' && (
                   <Input
                     type="number"
                     min={1}
                     value={item.quantity}
-                    onChange={(e) => updateItem(index, { quantity: Number(e.target.value) || 1 })}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      updateItem(index, { quantity: raw === '' ? '' : Number(raw) });
+                    }}
+                    onBlur={() => {
+                      if (item.quantity === '' || item.quantity < 1) updateItem(index, { quantity: 1 });
+                    }}
                     className="w-20"
                   />
                 )}
 
                 <button
                   type="button"
-                  onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}
+                  onClick={() => removeItem(index)}
                   className="mt-1.5 p-1.5 text-muted hover:text-red-600"
                   disabled={items.length === 1}
                 >
