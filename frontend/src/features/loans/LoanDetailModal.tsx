@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, PackageCheck, Pencil, RotateCcw, Undo2 } from 'lucide-react';
+import { CheckCircle2, PackageCheck, Pencil, RotateCcw, Trash2, Undo2 } from 'lucide-react';
 import { api, getApiErrorMessage } from '@/lib/api-client';
 import type { Attachment, Loan } from '@/lib/api-types';
 import { Modal } from '@/components/ui/Modal';
@@ -56,6 +56,7 @@ export function LoanDetailModal({
   const toast = useToast();
   const canApprove = isPermitted(hasPermission, [PERMISSIONS.LOANS_MANAGE, PERMISSIONS.LOANS_ADMINISTER]);
   const canIssueOrReturn = isPermitted(hasPermission, [PERMISSIONS.LOANS_SPEND, PERMISSIONS.LOANS_ADMINISTER]);
+  const canDelete = hasPermission(PERMISSIONS.LOANS_DELETE);
   const [issueOpen, setIssueOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -92,6 +93,16 @@ export function LoanDetailModal({
     onError: (err) => toast.push(getApiErrorMessage(err), 'error'),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async () => api.delete(`/loans/${loanId}`),
+    onSuccess: () => {
+      invalidate();
+      toast.push('Ausleihe wurde gelöscht.');
+      onClose();
+    },
+    onError: (err) => toast.push(getApiErrorMessage(err), 'error'),
+  });
+
   if (!loan) return null;
 
   const canEdit = loan.lentByUserId === me?.id || canApprove;
@@ -110,7 +121,7 @@ export function LoanDetailModal({
               />
             )}
           </div>
-          {(canApprove || canIssueOrReturn || canEdit) && (
+          {(canApprove || canIssueOrReturn || canEdit || canDelete) && (
             <div className="flex flex-wrap items-center gap-2">
               {canApprove && loan.status === 'requested' && (
                 <Button
@@ -153,6 +164,25 @@ export function LoanDetailModal({
                 >
                   <RotateCcw size={14} />
                   Status zurücksetzen
+                </Button>
+              )}
+              {canDelete && (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  loading={deleteMutation.isPending}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        'Diese Ausleihe wirklich endgültig löschen? Dies kann nicht rückgängig gemacht werden und die Ausleihe verschwindet aus allen Ansichten.',
+                      )
+                    ) {
+                      deleteMutation.mutate();
+                    }
+                  }}
+                >
+                  <Trash2 size={14} />
+                  Löschen
                 </Button>
               )}
             </div>
@@ -228,7 +258,6 @@ export function LoanDetailModal({
                 <tr className="border-b border-border bg-canvas text-left text-xs font-medium text-muted">
                   <th className="px-3 py-2">Inventarnummer</th>
                   <th className="px-3 py-2">Artikel</th>
-                  <th className="px-3 py-2">Zustand bei Ausgabe</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">Genehmigt</th>
                   <th className="px-3 py-2">Fotos</th>
@@ -238,12 +267,9 @@ export function LoanDetailModal({
                 {loan.items.map((item) => (
                   <tr key={item.id} className="border-b border-border last:border-0">
                     <td className="px-3 py-2 font-mono text-xs text-ink">
-                      {item.inventoryItem.inventoryNumber}
+                      {item.inventoryItem.inventoryNumber ?? '–'}
                     </td>
                     <td className="px-3 py-2 text-ink">{item.inventoryItem.article.name}</td>
-                    <td className="px-3 py-2 text-muted">
-                      {item.checkedOutCondition != null ? `${item.checkedOutCondition}%` : '–'}
-                    </td>
                     <td className="px-3 py-2">
                       {item.returnedAt ? (
                         <InventoryStatusBadge status={item.inventoryItem.status} />

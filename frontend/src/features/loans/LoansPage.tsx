@@ -26,7 +26,7 @@ export function LoansPage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission(PERMISSIONS.LOANS_MANAGE);
   const canAdminister = hasPermission(PERMISSIONS.LOANS_ADMINISTER);
-  const canView = canManage || hasPermission(PERMISSIONS.LOANS_VIEW) || canAdminister;
+  const canView = canManage || hasPermission(PERMISSIONS.LOANS_READ) || canAdminister;
   const [createOpen, setCreateOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -83,7 +83,7 @@ export function LoansPage() {
         <Card>
           <div className="p-8 text-center text-sm text-muted">
             Du kannst neue Ausleihen beantragen. Zum Einsehen bestehender Ausleihen fehlt dir die
-            Berechtigung <code className="rounded bg-black/5 px-1 py-0.5">loans.view</code>.
+            Berechtigung <code className="rounded bg-black/5 px-1 py-0.5">loans.read</code>.
             Direkt nach dem Anlegen kannst du eine Ausleihe trotzdem im Detail einsehen.
           </div>
         </Card>

@@ -37,7 +37,9 @@ export function LoanEditModal({
   const [items, setItems] = useState<EditableItem[]>(
     loan.items.map((i) => ({
       inventoryItemId: i.inventoryItemId,
-      label: `${i.inventoryItem.inventoryNumber} — ${i.inventoryItem.article.name}`,
+      label: i.inventoryItem.inventoryNumber
+        ? `${i.inventoryItem.inventoryNumber} — ${i.inventoryItem.article.name}`
+        : i.inventoryItem.article.name,
     })),
   );
   const [error, setError] = useState<string | null>(null);
@@ -159,7 +161,9 @@ export function LoanEditModal({
                   ...prev,
                   {
                     inventoryItemId: inventoryItem.id,
-                    label: `${inventoryItem.inventoryNumber} — ${inventoryItem.article.name}`,
+                    label: inventoryItem.inventoryNumber
+                      ? `${inventoryItem.inventoryNumber} — ${inventoryItem.article.name}`
+                      : inventoryItem.article.name,
                   },
                 ]);
               }}

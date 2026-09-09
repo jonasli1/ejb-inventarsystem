@@ -265,7 +265,9 @@ export function LoanCreateModal({
                       mode: 'item',
                       inventoryItemId: inventoryItem.id,
                       articleId: '',
-                      label: `${inventoryItem.inventoryNumber} — ${inventoryItem.article.name}`,
+                      label: inventoryItem.inventoryNumber
+                        ? `${inventoryItem.inventoryNumber} — ${inventoryItem.article.name}`
+                        : inventoryItem.article.name,
                     })
                   }
                   onSelectArticle={(article: Article) =>

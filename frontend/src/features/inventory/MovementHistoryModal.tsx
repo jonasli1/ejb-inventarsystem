@@ -39,7 +39,7 @@ export function MovementHistoryModal({ item, onClose }: { item: InventoryItem; o
   });
 
   return (
-    <Modal open onClose={onClose} title={`Bewegungshistorie – ${item.inventoryNumber}`} size="lg">
+    <Modal open onClose={onClose} title={`Bewegungshistorie – ${item.inventoryNumber ?? item.article.name}`} size="lg">
       {movementsQuery.isLoading && (
         <div className="flex justify-center py-8">
           <Spinner />
@@ -60,7 +60,6 @@ export function MovementHistoryModal({ item, onClose }: { item: InventoryItem; o
                 m.newStatus &&
                 `${INVENTORY_STATUS_LABEL[m.oldStatus] ?? m.oldStatus} → ${INVENTORY_STATUS_LABEL[m.newStatus] ?? m.newStatus}`}
               {m.fromRoom && m.toRoom && `${m.fromRoom.name} → ${m.toRoom.name}`}
-              {m.oldCondition != null && m.newCondition != null && `${m.oldCondition}% → ${m.newCondition}%`}
               {m.note && ` · ${m.note}`}
               {m.user && ` · ${m.user.displayName}`}
             </p>

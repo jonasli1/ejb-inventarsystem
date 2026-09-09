@@ -4,6 +4,7 @@ import { api } from '@/lib/api-client';
 import { useArticles } from '@/lib/reference-data';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import type { Article, InventoryItem, PaginatedResult } from '@/lib/api-types';
+import { INVENTORY_STATUS_LABEL } from '@/lib/status-labels';
 import { Input } from '@/components/ui/Input';
 import { ArticleImageThumbnail } from '@/components/ui/ArticleImageThumbnail';
 
@@ -57,7 +58,7 @@ export function ItemSearchSelect({
     if (needle.length < 2) return [];
     const articleRows: Row[] = allowArticles
       ? (articles ?? [])
-          .filter((a) => a.type !== 'UNIQUE' && a.stock.available > 0 && a.name.toLowerCase().includes(needle))
+          .filter((a) => a.stock.available > 0 && a.name.toLowerCase().includes(needle))
           .slice(0, 3)
           .map((a) => ({ kind: 'article', key: `article-${a.id}`, article: a }))
       : [];
@@ -90,6 +91,8 @@ export function ItemSearchSelect({
     <div className="relative flex-1">
       <Input
         placeholder={placeholder}
+        role="searchbox"
+        name="inventory-item-search"
         autoComplete="off"
         value={search}
         onChange={(e) => {
@@ -152,12 +155,13 @@ export function ItemSearchSelect({
                         <span className="flex flex-1 flex-col">
                           <span className="text-ink">
                             {row.item!.article.name}{' '}
-                            <span className="font-mono text-xs text-muted">
-                              {row.item!.inventoryNumber}
-                            </span>
+                            {row.item!.inventoryNumber && (
+                              <span className="font-mono text-xs text-muted">{row.item!.inventoryNumber}</span>
+                            )}
                           </span>
                           <span className="text-xs text-muted">
-                            {row.item!.ownerOrganization.name} · {row.item!.location.name} · {row.item!.status}
+                            {row.item!.ownerOrganization.name} · {row.item!.location.name} ·{' '}
+                            {INVENTORY_STATUS_LABEL[row.item!.status] ?? row.item!.status}
                           </span>
                         </span>
                       </>
