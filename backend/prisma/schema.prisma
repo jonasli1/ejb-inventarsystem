@@ -547,6 +547,9 @@ model Loan {
   lentBy User       @relation("LoanLentBy", fields: [lentByUserId], references: [id])
   items  LoanItem[]
 
+  @@index([status])
+  @@index([lentByUserId])
+  @@index([borrowerPersonId])
   @@map("loans")
 }
 
@@ -614,6 +617,12 @@ model Attachment {
   category     AttachmentCategory
   fileName     String               @map("file_name")
   storageKey   String               @map("storage_key")
+  // Resized variants, generated at upload time for image categories only
+  // (null for documents). List/search responses only ever expose
+  // thumbnailKey-derived URLs, never the original - the full-resolution
+  // image is fetched separately, on demand, via GET .../download.
+  thumbnailKey String?              @map("thumbnail_key")
+  mediumKey    String?              @map("medium_key")
   mimeType     String               @map("mime_type")
   sizeBytes    Int                  @map("size_bytes")
   uploadedById String?              @map("uploaded_by_id")

@@ -3,11 +3,14 @@ import { InventoryStatus } from '@prisma/client';
 import {
   IsBoolean,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
+  Min,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
 // `@Type(() => Boolean)` would turn the string "false" into `true`, since
@@ -65,10 +68,33 @@ export class QueryInventoryItemDto extends PaginationQueryDto {
 
   @ApiPropertyOptional({
     default: false,
-    description: 'Return items grouped by article instead of a flat list.',
+    description:
+      'Return items grouped by article instead of a flat list. Grouped mode still uses page/pageSize (bounded by article count); the flat list uses cursor/limit instead - see below.',
   })
   @IsOptional()
   @Transform(toBoolean)
   @IsBoolean()
   grouped?: boolean = false;
+
+  @ApiPropertyOptional({
+    description:
+      'Keyset pagination cursor for the flat (non-grouped) list, from a previous response\'s nextCursor. Ignored when grouped=true.',
+  })
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+
+  @ApiPropertyOptional({
+    default: 50,
+    minimum: 1,
+    maximum: 200,
+    description:
+      'Page size for the flat (non-grouped) list. Ignored when grouped=true (use pageSize there instead).',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number = 50;
 }

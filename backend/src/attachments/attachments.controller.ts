@@ -104,6 +104,44 @@ export class AttachmentsController {
     );
   }
 
+  @Get(':id/thumbnail')
+  async thumbnail(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.streamVariant(id, 'thumbnail', res, user);
+  }
+
+  @Get(':id/medium')
+  async medium(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.streamVariant(id, 'medium', res, user);
+  }
+
+  private async streamVariant(
+    id: string,
+    variant: 'thumbnail' | 'medium',
+    res: Response,
+    user: AuthenticatedUser,
+  ) {
+    const attachment = await this.attachments.findById(id);
+    this.attachments.assertPermission(attachment.entityType, user, 'read');
+    const file = await this.attachments.getFileForVariant(id, variant);
+    res.set({
+      'Content-Type': file.mimeType,
+      // Inline, not an attachment download - this is meant to be displayed
+      // directly (an <img src>), and long-lived since a given variant's
+      // bytes never change once generated.
+      'Content-Disposition': `inline; filename="${encodeURIComponent(file.fileName)}"`,
+      'Cache-Control': 'private, max-age=604800, immutable',
+    });
+    return new StreamableFile(createReadStream(file.absolutePath));
+  }
+
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async remove(

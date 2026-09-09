@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AttachmentCategory, AttachmentEntityType } from '@prisma/client';
+import sharp from 'sharp';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -44,6 +45,14 @@ const BLOCKED_DOCUMENT_EXTENSIONS = new Set([
   '.com',
 ]);
 
+// Resized variants generated at upload time - list/search responses only
+// ever expose the thumbnail URL, and the medium size covers most in-app
+// detail views; the original is fetched separately, on demand, only when
+// actually needed (full download or a "view full size" action).
+const THUMBNAIL_MAX_DIMENSION = 200;
+const MEDIUM_MAX_DIMENSION = 800;
+const VARIANT_JPEG_QUALITY = 82;
+
 function isImageCategory(category: AttachmentCategory): boolean {
   return (
     category === AttachmentCategory.image ||
@@ -61,7 +70,9 @@ function sanitizeFileName(name: string): string {
 
 @Injectable()
 export class AttachmentsService {
+  private readonly logger = new Logger(AttachmentsService.name);
   private readonly uploadsDir: string;
+  private readonly apiPrefix: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -71,6 +82,7 @@ export class AttachmentsService {
     this.uploadsDir = path.resolve(
       this.config.get<string>('uploadsDir') ?? './uploads',
     );
+    this.apiPrefix = this.config.get<string>('apiPrefix') ?? 'api/v1';
   }
 
   private assertValidCategory(
@@ -143,12 +155,33 @@ export class AttachmentsService {
       throw new AppNotFoundException('Zielobjekt nicht gefunden.');
   }
 
+  /** Attaches thumbnailUrl/mediumUrl (image categories only) + origin: 'own' to a raw attachment row for API responses - never the binary itself. */
+  private toResponse<T extends { id: string; category: AttachmentCategory }>(
+    attachment: T,
+  ): T & {
+    thumbnailUrl: string | null;
+    mediumUrl: string | null;
+    origin: 'own';
+  } {
+    const hasVariants = isImageCategory(attachment.category);
+    return {
+      ...attachment,
+      thumbnailUrl: hasVariants
+        ? `/${this.apiPrefix}/attachments/${attachment.id}/thumbnail`
+        : null,
+      mediumUrl: hasVariants
+        ? `/${this.apiPrefix}/attachments/${attachment.id}/medium`
+        : null,
+      origin: 'own' as const,
+    };
+  }
+
   async list(
     entityType: AttachmentEntityType,
     entityId: string,
     category?: AttachmentCategory,
   ) {
-    return this.prisma.attachment.findMany({
+    const rows = await this.prisma.attachment.findMany({
       where: {
         entityType,
         entityId,
@@ -158,6 +191,7 @@ export class AttachmentsService {
       include: { uploadedBy: { select: { id: true, displayName: true } } },
       orderBy: { createdAt: 'desc' },
     });
+    return rows.map((r) => this.toResponse(r));
   }
 
   async save(
@@ -177,7 +211,8 @@ export class AttachmentsService {
       );
     }
 
-    if (isImageCategory(category)) {
+    const isImage = isImageCategory(category);
+    if (isImage) {
       if (!IMAGE_MIME_TYPES.has(file.mimetype)) {
         throw new AppBadRequestException(
           'Nur JPEG-, PNG-, WebP- oder GIF-Bilder sind hier erlaubt.',
@@ -208,21 +243,56 @@ export class AttachmentsService {
 
     // "image" is a single product photo: replace any existing one.
     if (category === AttachmentCategory.image) {
-      await this.prisma.attachment.updateMany({
+      const previous = await this.prisma.attachment.findMany({
         where: { entityType, entityId, category, deletedAt: null },
+      });
+      await this.prisma.attachment.updateMany({
+        where: { id: { in: previous.map((p) => p.id) } },
         data: { deletedAt: new Date() },
       });
+      // The replaced original + its variants are no longer referenced by
+      // anything (soft-deleted rows never re-surface) - clean them up so
+      // the uploads directory doesn't grow unboundedly with orphaned files.
+      for (const p of previous) {
+        await this.deleteFilesQuietly(p);
+      }
     }
 
     const fileName = sanitizeFileName(file.originalname || 'file');
-    const storageKey = path.join(
-      entityType,
-      entityId,
-      `${crypto.randomUUID()}__${fileName}`,
-    );
+    const baseDir = path.join(entityType, entityId);
+    const uid = crypto.randomUUID();
+    const storageKey = path.join(baseDir, `${uid}__${fileName}`);
     const absolutePath = path.join(this.uploadsDir, storageKey);
     await fs.mkdir(path.dirname(absolutePath), { recursive: true });
     await fs.writeFile(absolutePath, file.buffer);
+
+    let thumbnailKey: string | undefined;
+    let mediumKey: string | undefined;
+    if (isImage) {
+      try {
+        thumbnailKey = await this.writeVariant(
+          file.buffer,
+          baseDir,
+          uid,
+          'thumb',
+          THUMBNAIL_MAX_DIMENSION,
+        );
+        mediumKey = await this.writeVariant(
+          file.buffer,
+          baseDir,
+          uid,
+          'medium',
+          MEDIUM_MAX_DIMENSION,
+        );
+      } catch (err) {
+        // Never fail the upload just because variant generation failed
+        // (e.g. a malformed image sharp can't parse) - the original is
+        // already safely stored; variant endpoints fall back to it.
+        this.logger.warn(
+          `Failed to generate image variants for upload "${fileName}": ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
 
     const attachment = await this.prisma.attachment.create({
       data: {
@@ -231,6 +301,8 @@ export class AttachmentsService {
         category,
         fileName: file.originalname || fileName,
         storageKey,
+        thumbnailKey,
+        mediumKey,
         mimeType: file.mimetype,
         sizeBytes: file.size,
         uploadedById: userId,
@@ -245,7 +317,32 @@ export class AttachmentsService {
       userId,
     });
 
-    return attachment;
+    return this.toResponse(attachment);
+  }
+
+  private async writeVariant(
+    original: Buffer,
+    baseDir: string,
+    uid: string,
+    suffix: string,
+    maxDimension: number,
+  ): Promise<string> {
+    const resized = await sharp(original)
+      .rotate() // auto-orient from EXIF before resizing
+      .resize({
+        width: maxDimension,
+        height: maxDimension,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: VARIANT_JPEG_QUALITY })
+      .toBuffer();
+
+    const key = path.join(baseDir, `${uid}__${suffix}.jpg`);
+    const absolutePath = path.join(this.uploadsDir, key);
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, resized);
+    return key;
   }
 
   async findById(id: string) {
@@ -265,6 +362,26 @@ export class AttachmentsService {
       throw new AppNotFoundException('Die Anhang-Datei fehlt auf dem Server.');
     }
     return attachment;
+  }
+
+  /** Resolves a thumbnail/medium variant's file, falling back to the original for attachments uploaded before variants existed. */
+  async getFileForVariant(id: string, variant: 'thumbnail' | 'medium') {
+    const attachment = await this.findById(id);
+    const key =
+      (variant === 'thumbnail'
+        ? attachment.thumbnailKey
+        : attachment.mediumKey) ?? attachment.storageKey;
+    const absolutePath = path.join(this.uploadsDir, key);
+    try {
+      await fs.access(absolutePath);
+    } catch {
+      throw new AppNotFoundException('Die Anhang-Datei fehlt auf dem Server.');
+    }
+    return {
+      absolutePath,
+      mimeType: key === attachment.storageKey ? attachment.mimeType : 'image/jpeg',
+      fileName: attachment.fileName,
+    };
   }
 
   resolveAbsolutePath(storageKey: string): string {
@@ -288,6 +405,21 @@ export class AttachmentsService {
       userId,
     });
     return attachment;
+  }
+
+  private async deleteFilesQuietly(attachment: {
+    storageKey: string;
+    thumbnailKey: string | null;
+    mediumKey: string | null;
+  }): Promise<void> {
+    for (const key of [
+      attachment.storageKey,
+      attachment.thumbnailKey,
+      attachment.mediumKey,
+    ]) {
+      if (!key) continue;
+      await fs.unlink(path.join(this.uploadsDir, key)).catch(() => undefined);
+    }
   }
 }
 

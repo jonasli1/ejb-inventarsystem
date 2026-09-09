@@ -1,21 +1,40 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { StockMovementType } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
   IsDateString,
   IsEnum,
   IsIn,
+  IsInt,
   IsOptional,
+  IsString,
   IsUUID,
+  Max,
+  Min,
 } from 'class-validator';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
-export class QueryActivityDto extends PaginationQueryDto {
-  // Overrides PaginationQueryDto's `sortOrder = 'asc'` default — an activity
-  // feed should read most-recent-first unless the caller asks otherwise.
+export class QueryActivityDto {
+  // Most-recent-first unless the caller asks otherwise.
   @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortOrder?: 'asc' | 'desc' = 'desc';
+
+  @ApiPropertyOptional({
+    description:
+      'Keyset pagination cursor from a previous response\'s nextCursor.',
+  })
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number = 20;
 
   @ApiPropertyOptional()
   @IsOptional()

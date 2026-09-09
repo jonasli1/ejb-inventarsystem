@@ -2663,6 +2663,72 @@ describe('Inventarsystem API (e2e)', () => {
         .attach('file', Buffer.from('nope'), 'nope.txt')
         .expect(403);
     });
+
+    it('generates thumbnail/medium variants for an image upload, and the list response never embeds binary data', async () => {
+      const article = (
+        await request(app.getHttpServer())
+          .post('/api/v1/articles')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ name: 'Image Variant Article' })
+          .expect(201)
+      ).body;
+
+      // A minimal but valid 1x1 PNG.
+      const tinyPng = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'base64',
+      );
+
+      const upload = await request(app.getHttpServer())
+        .post(`/api/v1/attachments/article/${article.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .field('category', 'image')
+        .attach('file', tinyPng, 'photo.png')
+        .expect(201);
+      expect(upload.body.thumbnailUrl).toBe(
+        `/api/v1/attachments/${upload.body.id}/thumbnail`,
+      );
+      expect(upload.body.mediumUrl).toBe(
+        `/api/v1/attachments/${upload.body.id}/medium`,
+      );
+
+      const list = await request(app.getHttpServer())
+        .get(`/api/v1/attachments?entityType=article&entityId=${article.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(list.body[0].thumbnailUrl).toBeTruthy();
+      expect(JSON.stringify(list.body)).not.toContain(
+        tinyPng.toString('base64'),
+      );
+
+      const thumbnail = await request(app.getHttpServer())
+        .get(`/api/v1/attachments/${upload.body.id}/thumbnail`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(thumbnail.headers['content-type']).toBe('image/jpeg');
+
+      const medium = await request(app.getHttpServer())
+        .get(`/api/v1/attachments/${upload.body.id}/medium`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(medium.headers['content-type']).toBe('image/jpeg');
+
+      // Uploading a second image replaces the first (single product photo).
+      const secondUpload = await request(app.getHttpServer())
+        .post(`/api/v1/attachments/article/${article.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .field('category', 'image')
+        .attach('file', tinyPng, 'photo2.png')
+        .expect(201);
+      const listAfterReplace = await request(app.getHttpServer())
+        .get(`/api/v1/attachments?entityType=article&entityId=${article.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(
+        listAfterReplace.body.filter((a: { category: string }) => a.category === 'image'),
+      ).toHaveLength(1);
+      expect(listAfterReplace.body[0].id).toBe(secondUpload.body.id);
+    });
   });
 
   describe('general settings (name/logo/login methods)', () => {
@@ -4051,6 +4117,36 @@ describe('Inventarsystem API (e2e)', () => {
         .send({ articleId, locationId, roomId, ownerOrganizationId: orgId, ownerUnitId: unitId, ...body })
         .expect(201);
     }
+
+    it('paginates the flat list via cursor/limit (no duplicate or skipped rows across pages)', async () => {
+      const cursorArticle = await request(app.getHttpServer())
+        .post('/api/v1/articles')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Cursor Pagination Article' })
+        .expect(201);
+      for (let i = 0; i < 5; i++) {
+        await createItem({ articleId: cursorArticle.body.id });
+      }
+
+      const collected: string[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < 10; page++) {
+        const res = await request(app.getHttpServer())
+          .get(
+            `/api/v1/inventory?articleId=${cursorArticle.body.id}&limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+          )
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(res.body.data.length).toBeLessThanOrEqual(2);
+        expect(res.body).not.toHaveProperty('meta');
+        collected.push(...res.body.data.map((i: { id: string }) => i.id));
+        cursor = res.body.nextCursor;
+        if (!cursor) break;
+      }
+
+      expect(collected).toHaveLength(5);
+      expect(new Set(collected).size).toBe(5);
+    });
 
     it('rejects a duplicate case-insensitive inventory number among active items', async () => {
       await createItem({ inventoryNumber: 'DUP-CASE-001' });

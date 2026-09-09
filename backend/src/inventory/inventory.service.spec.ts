@@ -193,7 +193,9 @@ describe('InventoryService', () => {
     it('includes the article category name in the free-text search', async () => {
       await service.findAll({ search: 'Kabel' });
       const call = prisma.inventoryItem.findMany.mock.calls[0][0];
-      expect(call.where.OR).toContainEqual({
+      // Search contributes its own OR, nested under an AND alongside the
+      // (when present) cursor OR - they can't share one top-level OR key.
+      expect(call.where.AND[0].OR).toContainEqual({
         article: {
           category: { name: { contains: 'Kabel', mode: 'insensitive' } },
         },
@@ -204,9 +206,65 @@ describe('InventoryService', () => {
       prisma.$queryRaw.mockResolvedValue([{ id: 'article-alias-1' }]);
       await service.findAll({ search: 'Beamer' });
       const call = prisma.inventoryItem.findMany.mock.calls[0][0];
-      expect(call.where.OR).toContainEqual({
+      expect(call.where.AND[0].OR).toContainEqual({
         articleId: { in: ['article-alias-1'] },
       });
+    });
+
+    it('orders the flat list by (createdAt, id) for stable keyset pagination', async () => {
+      await service.findAll({});
+      expect(prisma.inventoryItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        }),
+      );
+    });
+
+    it('requests limit+1 rows and returns a nextCursor when more rows exist', async () => {
+      const rows = Array.from({ length: 51 }, (_, i) => ({
+        id: `item-${i}`,
+        createdAt: new Date(2026, 0, i + 1),
+      }));
+      prisma.inventoryItem.findMany.mockResolvedValue(rows);
+
+      const result = (await service.findAll({ limit: 50 })) as {
+        data: unknown[];
+        nextCursor: string | null;
+      };
+
+      expect(prisma.inventoryItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 51 }),
+      );
+      expect(result.data).toHaveLength(50);
+      expect(result.nextCursor).toBeTruthy();
+    });
+
+    it('returns no nextCursor once fewer rows than the limit come back', async () => {
+      prisma.inventoryItem.findMany.mockResolvedValue([
+        { id: 'item-1', createdAt: new Date() },
+      ]);
+      const result = (await service.findAll({ limit: 50 })) as {
+        nextCursor: string | null;
+      };
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('translates a cursor into an (createdAt, id) keyset filter, AND-composed with other filters', async () => {
+      const cursor = Buffer.from(
+        JSON.stringify({ createdAt: '2026-01-01T00:00:00.000Z', id: 'item-5' }),
+      ).toString('base64url');
+
+      await service.findAll({ cursor, status: 'available' });
+
+      const call = prisma.inventoryItem.findMany.mock.calls[0][0];
+      expect(call.where.status).toBe('available');
+      expect(call.where.AND[0].OR).toEqual([
+        { createdAt: { gt: new Date('2026-01-01T00:00:00.000Z') } },
+        {
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          id: { gt: 'item-5' },
+        },
+      ]);
     });
   });
 
