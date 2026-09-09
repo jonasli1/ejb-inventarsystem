@@ -154,41 +154,44 @@ function LoansList({ onSelect }: { onSelect: (loan: Loan) => void }) {
         ) : !query.data || query.data.data.length === 0 ? (
           <EmptyState title="Keine Ausleihen gefunden" />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs font-medium text-muted">
-                  <th className="px-5 py-2.5">Ausleiher</th>
-                  <th className="px-5 py-2.5">Objekte</th>
-                  <th className="px-5 py-2.5">Geplantes Datum</th>
-                  <th className="px-5 py-2.5">Fällig am</th>
-                  <th className="px-5 py-2.5">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {query.data.data.map((loan) => (
-                  <tr
-                    key={loan.id}
-                    onClick={() => onSelect(loan)}
-                    className="cursor-pointer border-b border-border last:border-0 hover:bg-canvas"
-                  >
-                    <td className="px-5 py-2.5 text-ink">{loan.borrowerName ?? loan.borrowerPersonId}</td>
-                    <td className="px-5 py-2.5 text-muted">
-                      {loan.items.length} Objekt{loan.items.length === 1 ? '' : 'e'}
-                    </td>
-                    <td className="px-5 py-2.5 text-muted">
+          <div>
+            <div className="hidden items-center gap-3 border-b border-border px-5 py-2.5 text-left text-xs font-medium text-muted sm:flex">
+              <span className="flex-1">Ausleiher</span>
+              <span className="w-24">Objekte</span>
+              <span className="w-28">Geplantes Datum</span>
+              <span className="w-28">Fällig am</span>
+              <span className="w-28">Status</span>
+            </div>
+            <div className="divide-y divide-border">
+              {query.data.data.map((loan) => (
+                <div
+                  key={loan.id}
+                  onClick={() => onSelect(loan)}
+                  className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5 hover:bg-canvas sm:flex-nowrap"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-ink">{loan.borrowerName ?? loan.borrowerPersonId}</p>
+                    <p className="truncate text-xs text-muted sm:hidden">
+                      {loan.items.length} Objekt{loan.items.length === 1 ? '' : 'e'} ·{' '}
                       {format(new Date(loan.checkoutDate), 'dd.MM.yyyy')}
-                    </td>
-                    <td className="px-5 py-2.5 text-muted">
-                      {loan.dueDate ? format(new Date(loan.dueDate), 'dd.MM.yyyy') : '–'}
-                    </td>
-                    <td className="px-5 py-2.5">
-                      <LoanStatusBadge status={loan.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      {loan.dueDate ? ` – ${format(new Date(loan.dueDate), 'dd.MM.yyyy')}` : ''}
+                    </p>
+                  </div>
+                  <span className="hidden w-24 text-muted sm:inline">
+                    {loan.items.length} Objekt{loan.items.length === 1 ? '' : 'e'}
+                  </span>
+                  <span className="hidden w-28 text-muted sm:inline">
+                    {format(new Date(loan.checkoutDate), 'dd.MM.yyyy')}
+                  </span>
+                  <span className="hidden w-28 text-muted sm:inline">
+                    {loan.dueDate ? format(new Date(loan.dueDate), 'dd.MM.yyyy') : '–'}
+                  </span>
+                  <span className="w-28 shrink-0">
+                    <LoanStatusBadge status={loan.status} />
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
         {query.data && (

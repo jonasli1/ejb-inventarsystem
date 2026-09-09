@@ -159,73 +159,72 @@ export function ArticlesPage() {
         ) : !query.data || query.data.data.length === 0 ? (
           <EmptyState title="Keine Artikel gefunden" description="Lege einen neuen Artikel an, um zu starten." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs font-medium text-muted">
-                  <th className="w-14 pl-5 py-2.5" />
-                  <th className="px-5 py-2.5">Name</th>
-                  <th className="px-5 py-2.5">Kategorie</th>
-                  <th className="px-5 py-2.5">Bestand</th>
-                  {(canUpdate || canDelete) && <th className="px-5 py-2.5" />}
-                </tr>
-              </thead>
-              <tbody>
-                {query.data.data.map((article) => (
-                  <tr
-                    key={article.id}
-                    onClick={() => {
-                      if (!canUpdate) return;
-                      setEditing(article);
-                      setFormOpen(true);
-                    }}
-                    className={`border-b border-border last:border-0 ${canUpdate ? 'cursor-pointer hover:bg-canvas' : ''}`}
-                  >
-                    <td className="py-2.5 pl-5">
-                      <ArticleImageThumbnail articleId={article.id} size="h-8 w-8" />
-                    </td>
-                    <td className="px-5 py-2.5 font-medium text-ink">
+          <div>
+            <div className="hidden items-center gap-3 border-b border-border px-5 py-2.5 text-left text-xs font-medium text-muted sm:flex">
+              <span className="w-8" />
+              <span className="flex-1">Name</span>
+              <span className="w-40">Kategorie</span>
+              <span className="w-64">Bestand</span>
+              {(canUpdate || canDelete) && <span className="w-8" />}
+            </div>
+            <div className="divide-y divide-border">
+              {query.data.data.map((article) => (
+                <div
+                  key={article.id}
+                  onClick={() => {
+                    if (!canUpdate) return;
+                    setEditing(article);
+                    setFormOpen(true);
+                  }}
+                  className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5 sm:flex-nowrap ${canUpdate ? 'cursor-pointer hover:bg-canvas' : ''}`}
+                >
+                  <ArticleImageThumbnail articleId={article.id} size="h-8 w-8" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-ink">
                       {article.name}
                       {article.aliases.length > 0 && (
                         <span className="ml-1.5 text-xs font-normal text-muted">
                           ({article.aliases.join(', ')})
                         </span>
                       )}
-                    </td>
-                    <td className="px-5 py-2.5 text-muted">{article.category?.name ?? '–'}</td>
-                    <td className="px-5 py-2.5 text-muted">
-                      {article.stock.total} gesamt · {article.stock.available} verfügbar ·{' '}
-                      {article.stock.borrowed} ausgeliehen
-                    </td>
-                    {(canUpdate || canDelete) && (
-                      <td className="px-5 py-2.5 text-right">
-                        {canDelete &&
-                          (article.stock.total === 0 ? (
-                            <button
-                              type="button"
-                              title="Artikel löschen"
-                              aria-label={`Artikel "${article.name}" löschen`}
-                              className="ml-auto -m-2 shrink-0 p-2 text-muted hover:text-red-600"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (window.confirm(`Artikel "${article.name}" wirklich löschen?`)) {
-                                  deleteMutation.mutate(article.id);
-                                }
-                              }}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          ) : (
-                            <span title="Artikel mit Beständen im Lager können nicht gelöscht werden">
-                              <Trash2 size={14} className="ml-auto -m-2 shrink-0 p-2 text-border" />
-                            </span>
-                          ))}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </p>
+                    <p className="truncate text-xs text-muted sm:hidden">
+                      {article.category?.name ?? 'Ohne Kategorie'} · {article.stock.total} gesamt ·{' '}
+                      {article.stock.available} verfügbar
+                    </p>
+                  </div>
+                  <span className="hidden w-40 truncate text-muted sm:inline">{article.category?.name ?? '–'}</span>
+                  <span className="hidden w-64 text-muted sm:inline">
+                    {article.stock.total} gesamt · {article.stock.available} verfügbar ·{' '}
+                    {article.stock.borrowed} ausgeliehen
+                  </span>
+                  {canDelete && (
+                    <span className="w-8 shrink-0 text-right">
+                      {article.stock.total === 0 ? (
+                        <button
+                          type="button"
+                          title="Artikel löschen"
+                          aria-label={`Artikel "${article.name}" löschen`}
+                          className="-m-2 p-2 text-muted hover:text-red-600"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Artikel "${article.name}" wirklich löschen?`)) {
+                              deleteMutation.mutate(article.id);
+                            }
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      ) : (
+                        <span title="Artikel mit Beständen im Lager können nicht gelöscht werden">
+                          <Trash2 size={14} className="-m-2 inline-block p-2 text-border" />
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
         {query.data && (
