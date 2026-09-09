@@ -8,6 +8,7 @@ import { useLocations, useOrganizationUnits, useOrganizations, useRooms } from '
 import type { AccessoryCandidate, InventoryItem, InventoryItemDetail, InventoryStatus } from '@/lib/api-types';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Badge, InventoryStatusBadge } from '@/components/ui/Badge';
@@ -329,10 +330,10 @@ export function InventoryDetailModal({
                 <Input type="number" min={0} step="0.01" {...register('purchasePrice')} disabled={!canUpdate} />
               </Field>
               <Field label="Anschaffungsdatum">
-                <Input type="date" {...register('purchaseDate')} disabled={!canUpdate} />
+                <DateInput {...register('purchaseDate')} disabled={!canUpdate} />
               </Field>
               <Field label="Nächste DGUV-V3-Prüfung">
-                <Input type="date" {...register('nextDguvV3Check')} disabled={!canUpdate} />
+                <DateInput {...register('nextDguvV3Check')} disabled={!canUpdate} />
               </Field>
               <div className="sm:col-span-2">
                 <Field label="Notizen">

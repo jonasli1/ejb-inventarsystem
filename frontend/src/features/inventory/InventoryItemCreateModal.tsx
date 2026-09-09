@@ -8,6 +8,7 @@ import { useLocations, useOrganizations, useOrganizationUnits, useRooms } from '
 import type { Article } from '@/lib/api-types';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/toast';
@@ -169,11 +170,11 @@ export function InventoryItemCreateModal({ open, onClose }: { open: boolean; onC
         </Field>
 
         <Field label="Anschaffungsdatum (optional)">
-          <Input type="date" {...register('purchaseDate')} />
+          <DateInput {...register('purchaseDate')} />
         </Field>
 
         <Field label="Nächste DGUV-V3-Prüfung (optional)">
-          <Input type="date" {...register('nextDguvV3Check')} />
+          <DateInput {...register('nextDguvV3Check')} />
         </Field>
 
         <div className="sm:col-span-2">
