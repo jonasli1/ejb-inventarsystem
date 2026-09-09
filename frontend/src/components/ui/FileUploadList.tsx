@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Download, FileText, Trash2, Upload } from 'lucide-react';
 import { api, getApiErrorMessage } from '@/lib/api-client';
 import { downloadExport } from '@/lib/export';
+import { useAttachmentBlobUrl } from '@/lib/useAttachmentBlobUrl';
+import { useInView } from '@/lib/useInView';
 import type { Attachment, AttachmentCategory, AttachmentEntityType } from '@/lib/api-types';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
@@ -18,9 +20,10 @@ function humanFileSize(bytes: number): string {
 
 /**
  * Small inline preview for image attachments; other categories fall back to a
- * file icon. Images are shown small by default; click to view full-size in
- * the shared lightbox (set enlargeable={false} to opt out, e.g. inside
- * another already-clickable row).
+ * file icon. Only the small thumbnail variant is fetched here, lazily once
+ * scrolled into view - the full-resolution original is fetched separately by
+ * the lightbox, only once the user actually clicks to enlarge (set
+ * enlargeable={false} to opt out, e.g. inside another already-clickable row).
  */
 export function AttachmentThumbnail({
   attachment,
@@ -31,47 +34,34 @@ export function AttachmentThumbnail({
   enlargeable?: boolean;
   size?: string;
 }) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const isImage = attachment.mimeType.startsWith('image/');
+  const [ref, inView] = useInView<HTMLDivElement>();
+  const { url } = useAttachmentBlobUrl(attachment.thumbnailUrl, isImage && inView);
   const lightbox = useLightbox();
-
-  useEffect(() => {
-    if (!isImage) return;
-    let cancelled = false;
-    let currentUrl: string | null = null;
-    void api.get(`/attachments/${attachment.id}/download`, { responseType: 'blob' }).then((res) => {
-      if (cancelled) return;
-      currentUrl = URL.createObjectURL(res.data as Blob);
-      setObjectUrl(currentUrl);
-    });
-    return () => {
-      cancelled = true;
-      if (currentUrl) URL.revokeObjectURL(currentUrl);
-    };
-  }, [attachment.id, isImage]);
 
   if (!isImage) {
     return <FileText size={16} className="shrink-0 text-muted" />;
   }
   return (
-    <div className={`${size} shrink-0 overflow-hidden rounded-md border border-border bg-canvas`}>
-      {objectUrl ? (
+    <div ref={ref} className={`${size} shrink-0 overflow-hidden rounded-md border border-border bg-canvas`}>
+      {url ? (
         <img
-          src={objectUrl}
+          src={url}
           alt={attachment.fileName}
+          loading="lazy"
           className={`h-full w-full object-cover ${enlargeable ? 'cursor-pointer' : ''}`}
           onClick={
             enlargeable
               ? (e) => {
                   e.stopPropagation();
-                  lightbox.open(objectUrl, attachment.fileName);
+                  lightbox.open(`/attachments/${attachment.id}/download`, attachment.fileName);
                 }
               : undefined
           }
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
-          <Spinner />
+          {inView && <Spinner />}
         </div>
       )}
     </div>

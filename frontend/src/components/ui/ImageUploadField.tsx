@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ImageOff, Trash2, Upload } from 'lucide-react';
+import { ImageOff, Trash2, Upload, ZoomIn } from 'lucide-react';
 import { api, getApiErrorMessage } from '@/lib/api-client';
+import { useAttachmentBlobUrl } from '@/lib/useAttachmentBlobUrl';
 import type { Attachment, AttachmentEntityType } from '@/lib/api-types';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/toast';
+import { useLightbox } from '@/components/ui/ImageLightbox';
 
 export function ImageUploadField({
   entityType,
@@ -20,7 +22,7 @@ export function ImageUploadField({
   const queryClient = useQueryClient();
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const lightbox = useLightbox();
 
   const queryKey = ['attachments', entityType, entityId, 'image'];
 
@@ -34,24 +36,7 @@ export function ImageUploadField({
       ).data,
   });
   const image = query.data?.[0] ?? null;
-
-  useEffect(() => {
-    if (!image) {
-      setObjectUrl(null);
-      return;
-    }
-    let cancelled = false;
-    let currentUrl: string | null = null;
-    void api.get(`/attachments/${image.id}/download`, { responseType: 'blob' }).then((res) => {
-      if (cancelled) return;
-      currentUrl = URL.createObjectURL(res.data as Blob);
-      setObjectUrl(currentUrl);
-    });
-    return () => {
-      cancelled = true;
-      if (currentUrl) URL.revokeObjectURL(currentUrl);
-    };
-  }, [image]);
+  const { url: objectUrl } = useAttachmentBlobUrl(image?.thumbnailUrl, !!image);
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -74,13 +59,23 @@ export function ImageUploadField({
     <div>
       <label className="mb-1.5 block text-sm font-medium text-ink">{label}</label>
       <div className="flex items-center gap-3">
-        <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-canvas">
+        <button
+          type="button"
+          disabled={!image}
+          onClick={() => image && lightbox.open(`/attachments/${image.id}/download`, label)}
+          className="group relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-canvas disabled:cursor-default"
+        >
           {objectUrl ? (
-            <img src={objectUrl} alt={label} className="h-full w-full object-cover" />
+            <>
+              <img src={objectUrl} alt={label} className="h-full w-full object-cover" />
+              <span className="absolute inset-0 hidden items-center justify-center bg-black/30 group-hover:flex">
+                <ZoomIn size={18} className="text-white" />
+              </span>
+            </>
           ) : (
             <ImageOff size={22} className="text-muted" />
           )}
-        </div>
+        </button>
         {canManage && (
           <div className="flex flex-col gap-1.5">
             <input
