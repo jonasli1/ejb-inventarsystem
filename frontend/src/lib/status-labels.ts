@@ -36,12 +36,6 @@ export const BACKUP_FREQUENCY_LABEL: Record<string, string> = {
   monthly: 'Monatlich',
 };
 
-export const ARTICLE_TYPE_LABEL: Record<string, string> = {
-  UNIQUE: 'Einzelobjekt',
-  BULK: 'Mehrfachobjekt',
-  CONSUMABLE: 'Verbrauchsobjekt',
-};
-
 export const MOVEMENT_TYPE_LABEL: Record<string, string> = {
   in: 'Zugang',
   out: 'Abgang',

@@ -1,11 +1,6 @@
 import type { HTMLAttributes } from 'react';
 import { clsx } from 'clsx';
-import {
-  ARTICLE_TYPE_LABEL,
-  INVENTORY_STATUS_LABEL,
-  LOAN_STATUS_LABEL,
-  MOVEMENT_TYPE_LABEL,
-} from '@/lib/status-labels';
+import { INVENTORY_STATUS_LABEL, LOAN_STATUS_LABEL, MOVEMENT_TYPE_LABEL } from '@/lib/status-labels';
 
 type Tone = 'neutral' | 'green' | 'amber' | 'red' | 'blue' | 'purple';
 
@@ -61,10 +56,6 @@ const LOAN_STATUS_TONE: Record<string, Tone> = {
 
 export function LoanStatusBadge({ status }: { status: string }) {
   return <Badge tone={LOAN_STATUS_TONE[status] ?? 'neutral'}>{LOAN_STATUS_LABEL[status] ?? status}</Badge>;
-}
-
-export function ArticleTypeBadge({ type }: { type: string }) {
-  return <Badge tone="purple">{ARTICLE_TYPE_LABEL[type] ?? type}</Badge>;
 }
 
 const MOVEMENT_TYPE_TONE: Record<string, Tone> = {
