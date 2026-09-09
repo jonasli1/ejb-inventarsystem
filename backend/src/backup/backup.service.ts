@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BackupDestinationType } from '@prisma/client';
 import * as crypto from 'node:crypto';
@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import * as tar from 'tar';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AppBadRequestException } from '../common/exceptions/app.exception';
 import { decryptSecret, encryptSecret } from './crypto.util';
 import { pgDump, pgRestoreApply, pgRestoreValidate } from './pg-dump.util';
 import { SftpUploaderService, type SftpTarget } from './sftp-uploader.service';
@@ -131,8 +132,9 @@ export class BackupService {
 
   async getOneDriveAuthorizationUrl(): Promise<string> {
     if (!this.onedrive.isConfigured()) {
-      throw new BadRequestException(
-        'Microsoft OAuth is not configured (MS_CLIENT_ID/MS_CLIENT_SECRET/MS_REDIRECT_URI).',
+      throw new AppBadRequestException(
+        'Microsoft OAuth ist nicht konfiguriert (MS_CLIENT_ID/MS_CLIENT_SECRET/MS_REDIRECT_URI).',
+        'ONEDRIVE_NOT_CONFIGURED',
       );
     }
     return this.onedrive.getAuthorizationUrl(crypto.randomUUID());
@@ -170,7 +172,10 @@ export class BackupService {
       where: { id: SINGLETON_ID },
     });
     if (!row?.destinationType) {
-      throw new BadRequestException('No backup destination configured.');
+      throw new AppBadRequestException(
+        'Es ist kein Backup-Ziel konfiguriert.',
+        'BACKUP_DESTINATION_NOT_CONFIGURED',
+      );
     }
     try {
       if (row.destinationType === BackupDestinationType.sftp) {
@@ -200,8 +205,9 @@ export class BackupService {
     _fileHint: string,
   ): SftpTarget {
     if (!row.sftpHost || !row.sftpUsername || !row.sftpPasswordEnc) {
-      throw new BadRequestException(
-        'SFTP destination is not fully configured.',
+      throw new AppBadRequestException(
+        'Das SFTP-Ziel ist nicht vollständig konfiguriert.',
+        'SFTP_NOT_CONFIGURED',
       );
     }
     return {
@@ -217,7 +223,10 @@ export class BackupService {
     onedriveRefreshTokenEnc: string | null;
   }): Promise<string> {
     if (!row.onedriveRefreshTokenEnc) {
-      throw new BadRequestException('OneDrive is not connected.');
+      throw new AppBadRequestException(
+        'OneDrive ist nicht verbunden.',
+        'ONEDRIVE_NOT_CONNECTED',
+      );
     }
     const refreshToken = decryptSecret(
       row.onedriveRefreshTokenEnc,
@@ -275,15 +284,17 @@ export class BackupService {
       const extractDir = await this.extractArchive(buffer, dir);
       const dumpPath = path.join(extractDir, DUMP_ENTRY);
       if (!(await this.pathExists(dumpPath))) {
-        throw new BadRequestException(
-          'Backup archive is missing the database dump.',
+        throw new AppBadRequestException(
+          'Dem Backup-Archiv fehlt der Datenbank-Dump.',
+          'BACKUP_DUMP_MISSING',
         );
       }
       try {
         await pgRestoreValidate(dumpPath);
       } catch {
-        throw new BadRequestException(
-          'Backup archive appears to be corrupted (pg_restore could not read it).',
+        throw new AppBadRequestException(
+          'Das Backup-Archiv scheint beschädigt zu sein (pg_restore konnte es nicht lesen).',
+          'BACKUP_ARCHIVE_CORRUPTED',
         );
       }
     });
@@ -297,15 +308,17 @@ export class BackupService {
       const uploadsSource = path.join(extractDir, UPLOADS_ENTRY);
 
       if (!(await this.pathExists(dumpPath))) {
-        throw new BadRequestException(
-          'Backup archive is missing the database dump.',
+        throw new AppBadRequestException(
+          'Dem Backup-Archiv fehlt der Datenbank-Dump.',
+          'BACKUP_DUMP_MISSING',
         );
       }
       try {
         await pgRestoreValidate(dumpPath);
       } catch {
-        throw new BadRequestException(
-          'Backup archive appears to be corrupted; aborting before any changes were made.',
+        throw new AppBadRequestException(
+          'Das Backup-Archiv scheint beschädigt zu sein; der Vorgang wurde abgebrochen, bevor Änderungen vorgenommen wurden.',
+          'BACKUP_ARCHIVE_CORRUPTED',
         );
       }
 
@@ -340,8 +353,9 @@ export class BackupService {
     try {
       await tar.extract({ file: archivePath, cwd: extractDir });
     } catch {
-      throw new BadRequestException(
-        'Uploaded file is not a valid backup archive.',
+      throw new AppBadRequestException(
+        'Die hochgeladene Datei ist kein gültiges Backup-Archiv.',
+        'BACKUP_ARCHIVE_INVALID',
       );
     }
     return extractDir;

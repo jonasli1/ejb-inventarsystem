@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'node:crypto';
+import { AppBadRequestException } from '../../common/exceptions/app.exception';
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
@@ -132,11 +133,17 @@ export class WebauthnService {
   private consumeChallenge(challengeId: string): ChallengeEntry {
     const entry = this.challengeStore.get(challengeId);
     if (!entry) {
-      throw new BadRequestException('Invalid or expired challenge.');
+      throw new AppBadRequestException(
+        'Die Challenge ist ungültig oder abgelaufen.',
+        'WEBAUTHN_CHALLENGE_INVALID',
+      );
     }
     this.challengeStore.delete(challengeId);
     if (Date.now() - entry.createdAt > CHALLENGE_TTL_MS) {
-      throw new BadRequestException('Challenge expired, please try again.');
+      throw new AppBadRequestException(
+        'Die Challenge ist abgelaufen. Bitte versuchen Sie es erneut.',
+        'WEBAUTHN_CHALLENGE_EXPIRED',
+      );
     }
     return entry;
   }

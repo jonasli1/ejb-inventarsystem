@@ -1,5 +1,6 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AppInternalServerErrorException } from '../common/exceptions/app.exception';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 // 4 MiB chunks, must be a multiple of 320 KiB per the Graph upload-session docs.
@@ -14,8 +15,9 @@ export interface OneDriveTokenResult {
 async function assertOk(res: Response, context: string): Promise<void> {
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new InternalServerErrorException(
-      `${context} failed (${res.status}): ${body.slice(0, 300)}`,
+    throw new AppInternalServerErrorException(
+      `${context} ist fehlgeschlagen (${res.status}): ${body.slice(0, 300)}`,
+      'ONEDRIVE_REQUEST_FAILED',
     );
   }
 }
@@ -83,7 +85,7 @@ export class OneDriveUploaderService {
         }),
       },
     );
-    await assertOk(res, 'Microsoft token request');
+    await assertOk(res, 'Microsoft-Token-Anfrage');
     const data = (await res.json()) as {
       access_token: string;
       refresh_token: string;
@@ -95,7 +97,7 @@ export class OneDriveUploaderService {
     const res = await fetch(`${GRAPH_BASE}/me/drive`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    await assertOk(res, 'OneDrive connectivity test');
+    await assertOk(res, 'OneDrive-Verbindungstest');
   }
 
   async upload(
@@ -119,7 +121,7 @@ export class OneDriveUploaderService {
           body: new Uint8Array(buffer),
         },
       );
-      await assertOk(res, 'OneDrive upload');
+      await assertOk(res, 'OneDrive-Upload');
       return;
     }
 
@@ -136,7 +138,7 @@ export class OneDriveUploaderService {
         }),
       },
     );
-    await assertOk(sessionRes, 'OneDrive upload session creation');
+    await assertOk(sessionRes, 'OneDrive-Upload-Sitzung erstellen');
     const { uploadUrl } = (await sessionRes.json()) as { uploadUrl: string };
 
     for (let offset = 0; offset < buffer.length; offset += UPLOAD_CHUNK_SIZE) {
@@ -153,7 +155,7 @@ export class OneDriveUploaderService {
         },
         body: new Uint8Array(chunk),
       });
-      await assertOk(chunkRes, 'OneDrive chunk upload');
+      await assertOk(chunkRes, 'OneDrive-Chunk-Upload');
     }
   }
 }

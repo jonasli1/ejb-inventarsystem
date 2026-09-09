@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'node:crypto';
+import { AppBadRequestException } from '../../common/exceptions/app.exception';
 
 interface PkceEntry {
   codeVerifier: string;
@@ -51,7 +52,10 @@ export class ChurchToolsService {
 
   buildAuthorizationUrl(): { url: string; state: string } {
     if (!this.isConfigured()) {
-      throw new BadRequestException('ChurchTools login is not configured.');
+      throw new AppBadRequestException(
+        'Die ChurchTools-Anmeldung ist nicht konfiguriert.',
+        'CHURCHTOOLS_NOT_CONFIGURED',
+      );
     }
     const c = this.cfg;
 
@@ -84,12 +88,18 @@ export class ChurchToolsService {
   ): Promise<ChurchToolsProfile> {
     const entry = this.pkceStore.get(state);
     if (!entry) {
-      throw new BadRequestException('Invalid or expired OAuth state.');
+      throw new AppBadRequestException(
+        'Der OAuth-Status ist ungültig oder abgelaufen.',
+        'OAUTH_STATE_INVALID',
+      );
     }
     this.pkceStore.delete(state);
 
     if (Date.now() - entry.createdAt > PKCE_TTL_MS) {
-      throw new BadRequestException('OAuth flow expired, please try again.');
+      throw new AppBadRequestException(
+        'Der Anmeldevorgang ist abgelaufen. Bitte versuchen Sie es erneut.',
+        'OAUTH_FLOW_EXPIRED',
+      );
     }
 
     const c = this.cfg;
@@ -110,7 +120,10 @@ export class ChurchToolsService {
       this.logger.warn(
         `ChurchTools token exchange failed: ${tokenResponse.status}`,
       );
-      throw new BadRequestException('ChurchTools token exchange failed.');
+      throw new AppBadRequestException(
+        'Der ChurchTools-Token-Austausch ist fehlgeschlagen.',
+        'CHURCHTOOLS_TOKEN_EXCHANGE_FAILED',
+      );
     }
 
     const token = (await tokenResponse.json()) as ChurchToolsTokenResponse;
@@ -120,7 +133,10 @@ export class ChurchToolsService {
     });
 
     if (!profileResponse.ok) {
-      throw new BadRequestException('Failed to fetch ChurchTools profile.');
+      throw new AppBadRequestException(
+        'Das ChurchTools-Profil konnte nicht abgerufen werden.',
+        'CHURCHTOOLS_PROFILE_FETCH_FAILED',
+      );
     }
 
     const profile = (await profileResponse.json()) as Record<string, any>;

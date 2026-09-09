@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  InternalServerErrorException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -41,6 +42,12 @@ export class AppNotFoundException extends NotFoundException {
 }
 
 export class AppUnauthorizedException extends UnauthorizedException {
+  constructor(message: string, code: string) {
+    super({ message, code });
+  }
+}
+
+export class AppInternalServerErrorException extends InternalServerErrorException {
   constructor(message: string, code: string) {
     super({ message, code });
   }

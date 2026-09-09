@@ -25,7 +25,7 @@ export function encryptSecret(plainText: string, secret: string): string {
 export function decryptSecret(encoded: string, secret: string): string {
   const [ivB64, authTagB64, ciphertextB64] = encoded.split('.');
   if (!ivB64 || !authTagB64 || !ciphertextB64) {
-    throw new Error('Malformed encrypted value.');
+    throw new Error('Der verschlüsselte Wert ist fehlerhaft formatiert.');
   }
   const key = deriveKey(secret);
   const decipher = crypto.createDecipheriv(

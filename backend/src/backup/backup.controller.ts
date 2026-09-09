@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -15,6 +14,7 @@ import { memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
+import { AppBadRequestException } from '../common/exceptions/app.exception';
 import {
   CurrentUser,
   type AuthenticatedUser,
@@ -88,7 +88,10 @@ export class BackupController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     if (!file?.buffer?.length) {
-      throw new BadRequestException('No backup file uploaded.');
+      throw new AppBadRequestException(
+        'Es wurde keine Backup-Datei hochgeladen.',
+        'BACKUP_FILE_MISSING',
+      );
     }
     await this.backupService.importBackup(file.buffer, user.id);
     return { restored: true };
