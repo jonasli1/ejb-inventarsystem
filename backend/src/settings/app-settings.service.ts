@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AppBadRequestException } from '../common/exceptions/app.exception';
 import { UpdateAppSettingsDto } from './dto/update-app-settings.dto';
 
 const SINGLETON_ID = 'singleton';
@@ -88,12 +89,16 @@ export class AppSettingsService {
 
   async uploadLogo(buffer: Buffer, mimeType: string, userId?: string) {
     if (!ALLOWED_LOGO_MIME_TYPES.includes(mimeType)) {
-      throw new BadRequestException(
-        'Logo must be an image (PNG, JPEG, SVG or WebP).',
+      throw new AppBadRequestException(
+        'Das Logo muss ein Bild sein (PNG, JPEG, SVG oder WebP).',
+        'INVALID_FILE_TYPE',
       );
     }
     if (buffer.length > MAX_LOGO_BYTES) {
-      throw new BadRequestException('Logo must be at most 2 MB.');
+      throw new AppBadRequestException(
+        'Das Logo darf höchstens 2 MB groß sein.',
+        'FILE_TOO_LARGE',
+      );
     }
 
     await this.getOrCreate();

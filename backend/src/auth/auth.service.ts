@@ -207,7 +207,11 @@ export class AuthService {
 
     const frontendUrl = this.config.get<string>('frontendUrl');
     const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
-    await this.email.sendPasswordResetEmail(user.email, resetUrl);
+    await this.email.sendPasswordResetEmail(
+      user.email,
+      resetUrl,
+      user.displayName,
+    );
   }
 
   /** Completes a password reset started via `requestPasswordReset`. Single-use, time-limited token. */

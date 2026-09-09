@@ -289,6 +289,7 @@ describe('AuthService', () => {
       prisma.user.findUnique.mockResolvedValue({
         id: 'user-1',
         email: 'user@example.com',
+        displayName: 'Test User',
         isActive: true,
         deletedAt: null,
       });
@@ -311,6 +312,7 @@ describe('AuthService', () => {
         expect.stringMatching(
           /^https:\/\/inventar\.example\.com\/reset-password\?token=/,
         ),
+        'Test User',
       );
     });
   });

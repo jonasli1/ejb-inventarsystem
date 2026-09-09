@@ -601,8 +601,10 @@ export class LoansService {
         await this.groups.getUserIdsWithLoanScopeForItems(resolvedItems);
       await this.email.notifyEvent(
         'loan.requested',
-        'Neue Ausleihe wartet auf Genehmigung',
-        `Eine neue Ausleihe für "${dto.borrowerName ?? dto.borrowerPersonId}" mit ${resolvedItems.length} Objekt(en) wartet auf Genehmigung.`,
+        {
+          borrowerName: dto.borrowerName ?? dto.borrowerPersonId ?? '',
+          itemCount: String(resolvedItems.length),
+        },
         (r) =>
           r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
           scopedUserIds.has(r.id),
@@ -753,8 +755,10 @@ export class LoansService {
       );
       await this.email.notifyEvent(
         'loan.requested',
-        'Ausleihe wurde bearbeitet und muss erneut genehmigt werden',
-        `Die Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" wurde bearbeitet und muss erneut genehmigt werden.`,
+        {
+          borrowerName: loan.borrowerName ?? loan.borrowerPersonId ?? '',
+          itemCount: String(updated.items.length),
+        },
         (r) =>
           r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
           scopedUserIds.has(r.id),
@@ -827,8 +831,7 @@ export class LoansService {
       );
       await this.email.notifyEvent(
         'loan.approved',
-        'Ausleihe genehmigt',
-        `Die Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" wurde genehmigt.`,
+        { borrowerName: loan.borrowerName ?? loan.borrowerPersonId ?? '' },
         (r) =>
           r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
           scopedUserIds.has(r.id),
@@ -889,8 +892,7 @@ export class LoansService {
     );
     await this.email.notifyEvent(
       'loan.issued',
-      'Ausleihe ausgegeben',
-      `Die Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" wurde ausgegeben.`,
+      { borrowerName: loan.borrowerName ?? loan.borrowerPersonId ?? '' },
       (r) =>
         r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
         scopedUserIds.has(r.id),
@@ -1018,8 +1020,7 @@ export class LoansService {
       );
       await this.email.notifyEvent(
         'loan.returned',
-        'Ausleihe vollständig zurückgegeben',
-        `Die Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" wurde vollständig zurückgegeben.`,
+        { borrowerName: loan.borrowerName ?? loan.borrowerPersonId ?? '' },
         (r) =>
           r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
           scopedUserIds.has(r.id),

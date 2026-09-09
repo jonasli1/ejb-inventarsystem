@@ -456,11 +456,10 @@ describe('LoansService', () => {
 
       expect(email.notifyEvent).toHaveBeenCalledWith(
         'loan.requested',
-        expect.any(String),
-        expect.any(String),
+        expect.any(Object),
         expect.any(Function),
       );
-      const eligible = email.notifyEvent.mock.calls[0][3];
+      const eligible = email.notifyEvent.mock.calls[0][2];
       expect(eligible({ id: 'scoped-approver', permissions: new Set() })).toBe(
         true,
       );
@@ -636,8 +635,7 @@ describe('LoansService', () => {
         expect(result.status).toBe('approved');
         expect(email.notifyEvent).toHaveBeenCalledWith(
           'loan.approved',
-          expect.any(String),
-          expect.any(String),
+          expect.any(Object),
           expect.any(Function),
         );
       });
@@ -753,8 +751,7 @@ describe('LoansService', () => {
         );
         expect(email.notifyEvent).toHaveBeenCalledWith(
           'loan.issued',
-          expect.any(String),
-          expect.any(String),
+          expect.any(Object),
           expect.any(Function),
         );
       });
@@ -933,8 +930,7 @@ describe('LoansService', () => {
 
         expect(email.notifyEvent).toHaveBeenCalledWith(
           'loan.returned',
-          expect.any(String),
-          expect.any(String),
+          expect.any(Object),
           expect.any(Function),
         );
       });
@@ -1058,8 +1054,7 @@ describe('LoansService', () => {
       );
       expect(email.notifyEvent).toHaveBeenCalledWith(
         'loan.requested',
-        expect.any(String),
-        expect.any(String),
+        expect.any(Object),
         expect.any(Function),
       );
     });

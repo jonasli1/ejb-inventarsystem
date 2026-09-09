@@ -2920,6 +2920,88 @@ describe('Inventarsystem API (e2e)', () => {
     });
   });
 
+  describe('notification templates', () => {
+    it('gates template management behind settings.manage', async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'viewer@example.com', password: 'ViewerPass123!' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .get('/api/v1/notifications/templates')
+        .set('Authorization', `Bearer ${login.body.accessToken}`)
+        .expect(403);
+    });
+
+    it('lists every event with its default template and available placeholders', async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+
+      const list = await request(app.getHttpServer())
+        .get('/api/v1/notifications/templates')
+        .set('Authorization', `Bearer ${login.body.accessToken}`)
+        .expect(200);
+
+      const loanRequested = list.body.find(
+        (t: { eventKey: string }) => t.eventKey === 'loan.requested',
+      );
+      expect(loanRequested).toBeDefined();
+      expect(loanRequested.isCustomized).toBe(false);
+      expect(loanRequested.subject).toBeTruthy();
+      expect(loanRequested.bodyHtml).toContain('{{recipientName}}');
+      expect(
+        loanRequested.variables.some((v: { key: string }) => v.key === 'borrowerName'),
+      ).toBe(true);
+      expect(
+        loanRequested.variables.some((v: { key: string }) => v.key === 'recipientName'),
+      ).toBe(true);
+    });
+
+    it('customizes a template, uses it for the next notification, and can reset it back to the default', async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+      const token = login.body.accessToken;
+
+      const updated = await request(app.getHttpServer())
+        .put('/api/v1/notifications/templates/loan.requested')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          subject: 'Individuell: {{borrowerName}}',
+          bodyHtml: '<p>Hallo {{recipientName}}, individueller Text.</p>',
+        })
+        .expect(200);
+      expect(updated.body.isCustomized).toBe(true);
+      expect(updated.body.subject).toBe('Individuell: {{borrowerName}}');
+
+      const fetched = await request(app.getHttpServer())
+        .get('/api/v1/notifications/templates/loan.requested')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(fetched.body.subject).toBe('Individuell: {{borrowerName}}');
+
+      const reset = await request(app.getHttpServer())
+        .put('/api/v1/notifications/templates/loan.requested/reset')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(reset.body.isCustomized).toBe(false);
+      expect(reset.body.subject).not.toBe('Individuell: {{borrowerName}}');
+    });
+
+    it('404s for an unknown event key', async () => {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'AdminPass123!' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .get('/api/v1/notifications/templates/does.not.exist')
+        .set('Authorization', `Bearer ${login.body.accessToken}`)
+        .expect(404);
+    });
+  });
+
   describe('notification preferences', () => {
     it('only lists events the current user is eligible for', async () => {
       const viewerLogin = await request(app.getHttpServer())
@@ -3005,7 +3087,9 @@ describe('Inventarsystem API (e2e)', () => {
       const sendMail = jest.fn().mockResolvedValue(undefined);
       (nodemailer.createTransport as jest.Mock).mockReturnValue({ sendMail });
 
-      await app.get(EmailService).notifyEvent('backup.failed', 'Test', 'Body');
+      await app
+        .get(EmailService)
+        .notifyEvent('backup.failed', { errorMessage: 'Test-Fehler' });
 
       expect(sendMail).toHaveBeenCalledWith(
         expect.objectContaining({ to: 'admin@example.com' }),

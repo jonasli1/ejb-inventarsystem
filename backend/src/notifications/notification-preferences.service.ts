@@ -19,8 +19,9 @@ export class NotificationPreferencesService {
    */
   async listForUser(userId: string) {
     const permissions = await getEffectivePermissions(this.prisma, userId);
-    const eligibleEvents = NOTIFICATION_EVENTS.filter((event) =>
-      event.permissions.some((p) => permissions.has(p)),
+    const eligibleEvents = NOTIFICATION_EVENTS.filter(
+      (event) =>
+        !event.system && event.permissions.some((p) => permissions.has(p)),
     );
 
     const prefs = await this.prisma.notificationPreference.findMany({

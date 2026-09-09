@@ -407,7 +407,7 @@ export class BackupService {
         },
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
+      const message = err instanceof Error ? err.message : 'Unbekannter Fehler';
       await this.prisma.backupConfig.update({
         where: { id: SINGLETON_ID },
         data: {
@@ -416,11 +416,7 @@ export class BackupService {
           lastRunMessage: message,
         },
       });
-      await this.email.notifyEvent(
-        'backup.failed',
-        'Automatisches Backup fehlgeschlagen',
-        `Das automatische Backup ist fehlgeschlagen: ${message}`,
-      );
+      await this.email.notifyEvent('backup.failed', { errorMessage: message });
     }
   }
 

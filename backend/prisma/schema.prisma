@@ -757,3 +757,17 @@ model NotificationPreference {
   @@unique([userId, eventKey])
   @@map("notification_preferences")
 }
+
+// Admin-editable subject/HTML body per notification event key (see
+// notification-events.ts for the full event registry + available
+// {{placeholder}} variables per event). Falls back to a built-in German
+// default (also defined in notification-events.ts) when no row exists yet.
+model NotificationTemplate {
+  id        String   @id @default(uuid())
+  eventKey  String   @unique @map("event_key")
+  subject   String
+  bodyHtml  String   @map("body_html")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("notification_templates")
+}

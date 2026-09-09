@@ -1,10 +1,16 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import nodemailer from 'nodemailer';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AppBadRequestException } from '../common/exceptions/app.exception';
 import { decryptSecret, encryptSecret } from '../backup/crypto.util';
 import { NOTIFICATION_EVENT_BY_KEY } from './notification-events';
+import {
+  htmlToPlainText,
+  renderTemplate,
+  wrapEmailHtml,
+} from './email-template.util';
 import { UpdateEmailConfigDto } from './dto/update-email-config.dto';
 
 const SINGLETON_ID = 'singleton';
@@ -122,18 +128,69 @@ export class EmailService {
       : target.fromAddress;
   }
 
+  private async appBranding(): Promise<{
+    appName: string;
+    logoDataUrl: string | null;
+  }> {
+    const row = await this.prisma.appSettings.findUnique({
+      where: { id: SINGLETON_ID },
+    });
+    return {
+      appName: row?.displayName ?? 'Inventarsystem',
+      logoDataUrl:
+        row?.logoData && row.logoMimeType
+          ? `data:${row.logoMimeType};base64,${Buffer.from(row.logoData).toString('base64')}`
+          : null,
+    };
+  }
+
+  /**
+   * Renders an event's (admin-customized or built-in default) template with
+   * the given variables into a ready-to-send subject/html/text triple,
+   * wrapped in the shared responsive HTML shell (logo + app name).
+   */
+  private async renderEmail(
+    eventKey: string,
+    variables: Record<string, string>,
+  ): Promise<{ subject: string; html: string; text: string }> {
+    const eventDef = NOTIFICATION_EVENT_BY_KEY.get(eventKey);
+    const [templateRow, branding] = await Promise.all([
+      this.prisma.notificationTemplate.findUnique({ where: { eventKey } }),
+      this.appBranding(),
+    ]);
+
+    const allVariables = { appName: branding.appName, ...variables };
+    const subjectTemplate = templateRow?.subject ?? eventDef?.defaultSubject ?? eventKey;
+    const bodyTemplate = templateRow?.bodyHtml ?? eventDef?.defaultBodyHtml ?? '';
+
+    const subject = renderTemplate(subjectTemplate, allVariables);
+    const renderedBody = renderTemplate(bodyTemplate, allVariables);
+    const html = wrapEmailHtml({
+      appName: branding.appName,
+      logoDataUrl: branding.logoDataUrl,
+      bodyHtml: renderedBody,
+    });
+
+    return { subject, html, text: htmlToPlainText(renderedBody) };
+  }
+
   async sendTestEmail(toAddress: string): Promise<void> {
     const target = await this.buildTransport();
     if (!target) {
-      throw new BadRequestException(
+      throw new AppBadRequestException(
         'E-Mail-Versand ist nicht konfiguriert oder nicht aktiviert.',
+        'EMAIL_NOT_CONFIGURED',
       );
     }
+    const branding = await this.appBranding();
+    const bodyHtml =
+      '<p>Diese Test-E-Mail bestätigt, dass der E-Mail-Versand korrekt konfiguriert ist.</p>';
     await target.transport.sendMail({
       from: this.formatFrom(target),
       to: toAddress,
-      subject: 'Test-E-Mail vom Inventarsystem',
-      text: 'Diese Test-E-Mail bestätigt, dass der E-Mail-Versand korrekt konfiguriert ist.',
+      subject: 'Test-E-Mail',
+      html: wrapEmailHtml({ ...branding, bodyHtml }),
+      text: htmlToPlainText(bodyHtml),
     });
   }
 
@@ -141,31 +198,40 @@ export class EmailService {
   async sendPasswordResetEmail(
     toAddress: string,
     resetUrl: string,
+    recipientName: string,
   ): Promise<void> {
     const target = await this.buildTransport();
     if (!target) return;
+    const { subject, html, text } = await this.renderEmail('password.reset', {
+      recipientName,
+      resetUrl,
+    });
     await target.transport.sendMail({
       from: this.formatFrom(target),
       to: toAddress,
-      subject: 'Passwort zurücksetzen',
-      text: `Zum Zurücksetzen deines Passworts klicke auf folgenden Link (gültig für 1 Stunde):\n\n${resetUrl}\n\nWenn du diese Anfrage nicht gestellt hast, kannst du diese E-Mail ignorieren - dein Passwort bleibt unverändert.`,
+      subject,
+      html,
+      text,
     });
   }
 
   /**
-   * Sends `subject`/`body` to every active user eligible for `eventKey` (i.e.
-   * holding at least one of the permissions it requires), except those who
-   * explicitly disabled it. Events are opt-out, not opt-in: eligibility is
-   * queried directly from roles/permissions rather than from who has a
-   * notificationPreference row, since a row's mere presence used to be the
-   * only way to be subscribed at all - meaning nobody received a single
-   * notification until they first discovered and visited their profile page
-   * to turn events on individually. No-op if email is disabled.
+   * Sends the rendered template for `eventKey` to every active user eligible
+   * for it (i.e. holding at least one of the permissions it requires),
+   * except those who explicitly disabled it. Events are opt-out, not
+   * opt-in: eligibility is queried directly from roles/permissions rather
+   * than from who has a notificationPreference row, since a row's mere
+   * presence used to be the only way to be subscribed at all - meaning
+   * nobody received a single notification until they first discovered and
+   * visited their profile page to turn events on individually. No-op if
+   * email is disabled.
    */
   async notifyEvent(
     eventKey: string,
-    subject: string,
-    body: string,
+    // Event-specific {{placeholder}} values (see notification-events.ts);
+    // `recipientName` and `appName` are filled in automatically per
+    // recipient/globally and don't need to be passed here.
+    variables: Record<string, string>,
     // Further restricts eligible recipients beyond the event's base
     // permission requirement - e.g. loan.* events use this to only notify
     // approvers/issuers whose group is actually scoped to the loan's
@@ -197,6 +263,7 @@ export class EmailService {
       select: {
         id: true,
         email: true,
+        displayName: true,
         notificationPreferences: {
           where: { eventKey },
           select: { enabled: true },
@@ -227,11 +294,16 @@ export class EmailService {
       }
 
       try {
+        const { subject, html, text } = await this.renderEmail(eventKey, {
+          ...variables,
+          recipientName: recipient.displayName,
+        });
         await target.transport.sendMail({
           from: this.formatFrom(target),
           to: recipient.email,
           subject,
-          text: body,
+          html,
+          text,
         });
       } catch (err) {
         this.logger.warn(
