@@ -76,6 +76,8 @@ export interface ApiErrorBody {
   message: string | string[];
   path: string;
   timestamp: string;
+  /** Machine-readable error code, e.g. "DUPLICATE_INVENTORY_NUMBER", for matching in code instead of the message text. */
+  code?: string;
 }
 
 export function getApiErrorMessage(error: unknown, fallback = 'Ein Fehler ist aufgetreten.'): string {
@@ -86,4 +88,11 @@ export function getApiErrorMessage(error: unknown, fallback = 'Ein Fehler ist au
     }
   }
   return fallback;
+}
+
+export function getApiErrorCode(error: unknown): string | undefined {
+  if (axios.isAxiosError(error)) {
+    return (error.response?.data as ApiErrorBody | undefined)?.code;
+  }
+  return undefined;
 }

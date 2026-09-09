@@ -8,6 +8,12 @@ export interface PaginatedResult<T> {
   };
 }
 
+/** Keyset/cursor-paginated result, used by endpoints too large for a cheap COUNT(*) (flat inventory list, activity feed). */
+export interface CursorResult<T> {
+  data: T[];
+  nextCursor: string | null;
+}
+
 export interface TokenResponse {
   accessToken: string;
   refreshToken: string;
@@ -109,8 +115,6 @@ export interface Category {
   parentId: string | null;
 }
 
-export type ArticleType = 'UNIQUE' | 'BULK' | 'CONSUMABLE';
-
 export interface ArticleStock {
   total: number;
   available: number;
@@ -121,9 +125,12 @@ export interface Article {
   id: string;
   name: string;
   description: string | null;
+  /** Internal notes, distinct from the public-facing description. Inherited (read-only) onto each inventory item of this article. */
+  notes: string | null;
+  /** Short/affectionate alternate names (e.g. "Beamer"), included in article search. */
+  aliases: string[];
   categoryId: string | null;
   category?: Category | null;
-  type: ArticleType;
   unitOfMeasure: string | null;
   manufacturer: string | null;
   imageUrl: string | null;
@@ -160,19 +167,34 @@ export interface InventoryItem {
   roomId: string;
   ownerOrganizationId: string;
   ownerUnitId: string;
-  inventoryNumber: string;
+  /** Optional; never auto-generated. Case-insensitively unique among non-retired items only. */
+  inventoryNumber: string | null;
   status: InventoryStatus;
   serialNumber: string | null;
-  conditionPercent: number | null;
   /** Serialized as a decimal string by the API, e.g. "149.99". */
   purchasePrice: string | null;
   purchaseDate: string | null;
+  nextDguvV3Check: string | null;
   notes: string | null;
+  /** Set when this item is attached as accessory to another item. */
+  parentItemId: string | null;
   article: Article;
   location: Location;
   room: Room;
   ownerOrganization: Organization;
   ownerUnit: OrganizationUnit;
+}
+
+/** GET /inventory/:id - adds data inherited (read-only) from the article, plus this item's own accessories. */
+export interface InventoryItemDetail extends InventoryItem {
+  article: Article & { documents: Attachment[] };
+  accessories: InventoryItem[];
+}
+
+/** A candidate from GET /inventory/:id/accessory-candidates - ineligible ones carry a German `reason`. */
+export interface AccessoryCandidate extends InventoryItem {
+  eligible: boolean;
+  reason?: string;
 }
 
 export interface GroupedInventoryEntry {
@@ -327,6 +349,12 @@ export interface Attachment {
   sizeBytes: number;
   createdAt: string;
   uploadedBy: { id: string; displayName: string } | null;
+  /** Set for image categories; a small (200px) resized JPEG for list/search display. Never load the original there. */
+  thumbnailUrl: string | null;
+  /** Set for image categories; an 800px resized JPEG, enough for most in-app detail views. */
+  mediumUrl: string | null;
+  /** 'article' when shown on an InventoryItem but actually owned by its Article (read-only there); 'own' otherwise. */
+  origin: 'own' | 'article';
 }
 
 // -----------------------------------------------------------------------
