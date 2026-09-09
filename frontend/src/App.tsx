@@ -1,3 +1,4 @@
+import { lazy } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/query-client';
@@ -11,24 +12,36 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { ChurchToolsCallbackPage } from '@/features/auth/ChurchToolsCallbackPage';
-import { DashboardPage } from '@/features/dashboard/DashboardPage';
-import { InventoryPage } from '@/features/inventory/InventoryPage';
-import { ArticlesPage } from '@/features/articles/ArticlesPage';
-import { LocationsPage } from '@/features/locations/LocationsPage';
-import { OrganizationsPage } from '@/features/organizations/OrganizationsPage';
-import { LoansPage } from '@/features/loans/LoansPage';
-import { CalendarPage } from '@/features/calendar/CalendarPage';
-import { ActivityPage } from '@/features/activity/ActivityPage';
-import { UsersPage } from '@/features/users/UsersPage';
-import { RolesPage } from '@/features/roles/RolesPage';
-import { GroupsPage } from '@/features/groups/GroupsPage';
-import { ProfilePage } from '@/features/profile/ProfilePage';
-import { GeneralSettingsPage } from '@/features/settings/GeneralSettingsPage';
-import { BackupPage } from '@/features/settings/BackupPage';
-import { EmailSettingsPage } from '@/features/settings/EmailSettingsPage';
-import { OneDriveCallbackPage } from '@/features/settings/OneDriveCallbackPage';
 import { PermissionGate } from '@/auth/PermissionGate';
 import { PERMISSIONS } from '@/lib/permissions';
+
+// Everything behind the authenticated shell is code-split per route - none
+// of it is needed before login, and a user typically only ever visits a
+// handful of these pages in a session.
+const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const InventoryPage = lazy(() => import('@/features/inventory/InventoryPage').then((m) => ({ default: m.InventoryPage })));
+const ArticlesPage = lazy(() => import('@/features/articles/ArticlesPage').then((m) => ({ default: m.ArticlesPage })));
+const LocationsPage = lazy(() => import('@/features/locations/LocationsPage').then((m) => ({ default: m.LocationsPage })));
+const OrganizationsPage = lazy(() =>
+  import('@/features/organizations/OrganizationsPage').then((m) => ({ default: m.OrganizationsPage })),
+);
+const LoansPage = lazy(() => import('@/features/loans/LoansPage').then((m) => ({ default: m.LoansPage })));
+const CalendarPage = lazy(() => import('@/features/calendar/CalendarPage').then((m) => ({ default: m.CalendarPage })));
+const ActivityPage = lazy(() => import('@/features/activity/ActivityPage').then((m) => ({ default: m.ActivityPage })));
+const UsersPage = lazy(() => import('@/features/users/UsersPage').then((m) => ({ default: m.UsersPage })));
+const RolesPage = lazy(() => import('@/features/roles/RolesPage').then((m) => ({ default: m.RolesPage })));
+const GroupsPage = lazy(() => import('@/features/groups/GroupsPage').then((m) => ({ default: m.GroupsPage })));
+const ProfilePage = lazy(() => import('@/features/profile/ProfilePage').then((m) => ({ default: m.ProfilePage })));
+const GeneralSettingsPage = lazy(() =>
+  import('@/features/settings/GeneralSettingsPage').then((m) => ({ default: m.GeneralSettingsPage })),
+);
+const BackupPage = lazy(() => import('@/features/settings/BackupPage').then((m) => ({ default: m.BackupPage })));
+const EmailSettingsPage = lazy(() =>
+  import('@/features/settings/EmailSettingsPage').then((m) => ({ default: m.EmailSettingsPage })),
+);
+const OneDriveCallbackPage = lazy(() =>
+  import('@/features/settings/OneDriveCallbackPage').then((m) => ({ default: m.OneDriveCallbackPage })),
+);
 
 function App() {
   return (

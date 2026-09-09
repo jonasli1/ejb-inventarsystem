@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { ChevronDown, LogOut, Menu, Package, UserCircle, X } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { isPermitted } from '@/lib/permissions';
 import { usePublicAppSettings } from '@/lib/app-settings';
+import { Spinner } from '@/components/ui/Spinner';
 import { NAV_ITEMS, type NavItem } from './nav-config';
 
 function BrandMark({ size = 'md' }: { size?: 'sm' | 'md' }) {
@@ -180,7 +181,15 @@ export function AppShell() {
 
         <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-8">
           <div className="mx-auto max-w-6xl">
-            <Outlet />
+            <Suspense
+              fallback={
+                <div className="flex justify-center py-20">
+                  <Spinner />
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>
