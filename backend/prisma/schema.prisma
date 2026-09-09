@@ -743,6 +743,10 @@ model EmailConfig {
   passwordEnc String?  @map("password_enc")
   fromAddress String?  @map("from_address")
   fromName    String?  @map("from_name")
+  // Site-wide footer appended to every outgoing notification email (rich
+  // HTML, admin-authored - see wrapEmailHtml()). Falls back to a generic
+  // built-in text when unset.
+  footerHtml  String?  @map("footer_html")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("email_config")

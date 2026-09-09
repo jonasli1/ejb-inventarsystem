@@ -57,4 +57,12 @@ export class UpdateEmailConfigDto {
   @IsOptional()
   @IsString()
   fromName?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Rich HTML footer appended to every outgoing notification email. Empty/omitted falls back to a generic built-in text.',
+  })
+  @IsOptional()
+  @IsString()
+  footerHtml?: string;
 }

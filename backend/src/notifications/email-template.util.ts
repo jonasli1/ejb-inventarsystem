@@ -53,11 +53,16 @@ export function wrapEmailHtml(opts: {
   appName: string;
   logoDataUrl: string | null;
   bodyHtml: string;
+  /** Admin-authored HTML (trusted, like bodyHtml - not escaped); falls back to a generic default text when unset. */
+  footerHtml?: string | null;
 }): string {
   const { appName, logoDataUrl, bodyHtml } = opts;
   const logo = logoDataUrl
     ? `<img src="${logoDataUrl}" alt="${escapeHtml(appName)}" height="40" style="height:40px;width:auto;display:block;border:0;" />`
     : `<span style="font-size:20px;font-weight:600;color:#111827;">${escapeHtml(appName)}</span>`;
+  const footer =
+    opts.footerHtml ||
+    `Diese E-Mail wurde automatisch von ${escapeHtml(appName)} versendet.`;
 
   return `<!doctype html>
 <html lang="de">
@@ -78,7 +83,7 @@ export function wrapEmailHtml(opts: {
             </tr>
             <tr>
               <td style="padding:16px 32px;background-color:#f9fafb;color:#9ca3af;font-size:12px;">
-                Diese E-Mail wurde automatisch von ${escapeHtml(appName)} versendet.
+                ${footer}
               </td>
             </tr>
           </table>

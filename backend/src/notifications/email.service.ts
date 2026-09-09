@@ -44,6 +44,7 @@ export class EmailService {
       passwordSet: !!row.passwordEnc,
       fromAddress: row.fromAddress,
       fromName: row.fromName,
+      footerHtml: row.footerHtml,
     };
   }
 
@@ -61,6 +62,7 @@ export class EmailService {
           : {}),
         fromAddress: dto.fromAddress,
         fromName: dto.fromName,
+        footerHtml: dto.footerHtml,
       },
       create: {
         id: SINGLETON_ID,
@@ -74,6 +76,7 @@ export class EmailService {
           : undefined,
         fromAddress: dto.fromAddress,
         fromName: dto.fromName,
+        footerHtml: dto.footerHtml,
       },
     });
 
@@ -131,16 +134,19 @@ export class EmailService {
   private async appBranding(): Promise<{
     appName: string;
     logoDataUrl: string | null;
+    footerHtml: string | null;
   }> {
-    const row = await this.prisma.appSettings.findUnique({
-      where: { id: SINGLETON_ID },
-    });
+    const [appSettings, emailConfig] = await Promise.all([
+      this.prisma.appSettings.findUnique({ where: { id: SINGLETON_ID } }),
+      this.prisma.emailConfig.findUnique({ where: { id: SINGLETON_ID } }),
+    ]);
     return {
-      appName: row?.displayName ?? 'Inventarsystem',
+      appName: appSettings?.displayName ?? 'Inventarsystem',
       logoDataUrl:
-        row?.logoData && row.logoMimeType
-          ? `data:${row.logoMimeType};base64,${Buffer.from(row.logoData).toString('base64')}`
+        appSettings?.logoData && appSettings.logoMimeType
+          ? `data:${appSettings.logoMimeType};base64,${Buffer.from(appSettings.logoData).toString('base64')}`
           : null,
+      footerHtml: emailConfig?.footerHtml ?? null,
     };
   }
 
@@ -168,6 +174,7 @@ export class EmailService {
     const html = wrapEmailHtml({
       appName: branding.appName,
       logoDataUrl: branding.logoDataUrl,
+      footerHtml: branding.footerHtml,
       bodyHtml: renderedBody,
     });
 
