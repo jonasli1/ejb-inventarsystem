@@ -408,6 +408,12 @@ export class LoansService {
    * requested [checkoutDate, dueDate] window. Works identically for immediate
    * and future-dated loans -- there is no separate "reserved" status, this
    * date-overlap check against other active loans' items is the only gate.
+   *
+   * Accessory items (InventoryItem.parentItemId set) are never picked to
+   * fulfill an articleId+quantity request, and are auto-bundled alongside
+   * every resolved main object's own accessories - they can only ever be
+   * part of a loan together with their main object (see the trailing
+   * consistency pass below).
    */
   private async resolveCheckoutItems(
     items: CreateLoanItemDto[],
@@ -417,6 +423,26 @@ export class LoansService {
   ): Promise<InventoryItem[]> {
     const resolved: InventoryItem[] = [];
     const usedIds = new Set<string>();
+
+    const addResolvedItem = async (item: InventoryItem): Promise<void> => {
+      if (usedIds.has(item.id)) return;
+      this.assertBookableStatus(item);
+      if (
+        await this.hasSchedulingConflict(
+          item.id,
+          checkoutDate,
+          dueDate,
+          excludeLoanId,
+        )
+      ) {
+        throw new AppBadRequestException(
+          `Inventarobjekt ${item.inventoryNumber ?? item.id} ist im gewünschten Zeitraum bereits gebucht.`,
+          'ITEM_ALREADY_BOOKED',
+        );
+      }
+      usedIds.add(item.id);
+      resolved.push(item);
+    };
 
     for (const spec of items) {
       if (spec.inventoryItemId) {
@@ -433,22 +459,7 @@ export class LoansService {
             'ITEM_SELECTED_TWICE',
           );
         }
-        this.assertBookableStatus(item);
-        if (
-          await this.hasSchedulingConflict(
-            item.id,
-            checkoutDate,
-            dueDate,
-            excludeLoanId,
-          )
-        ) {
-          throw new AppBadRequestException(
-            `Inventarobjekt ${item.inventoryNumber ?? item.id} ist im gewünschten Zeitraum bereits gebucht.`,
-            'ITEM_ALREADY_BOOKED',
-          );
-        }
-        usedIds.add(item.id);
-        resolved.push(item);
+        await addResolvedItem(item);
         continue;
       }
 
@@ -459,6 +470,10 @@ export class LoansService {
             articleId: spec.articleId,
             deletedAt: null,
             status: { in: BOOKABLE_STATUSES },
+            // Accessories are never auto-picked to fulfill a generic
+            // quantity request - they only ever travel with their specific
+            // main object, resolved via the bundling pass below.
+            parentItemId: null,
             id: { notIn: [...usedIds] },
           },
         });
@@ -493,6 +508,33 @@ export class LoansService {
         'Jedes Ausleih-Objekt benötigt entweder inventoryItemId oder articleId.',
         'ITEM_SPEC_INVALID',
       );
+    }
+
+    // Auto-bundle every resolved main object's accessories.
+    for (const item of [...resolved]) {
+      if (item.parentItemId) continue;
+      const accessories = await this.prisma.inventoryItem.findMany({
+        where: {
+          parentItemId: item.id,
+          deletedAt: null,
+          id: { notIn: [...usedIds] },
+        },
+      });
+      for (const accessory of accessories) {
+        await addResolvedItem(accessory);
+      }
+    }
+
+    // An accessory may only be part of this checkout together with its main
+    // object - reject any accessory that ended up here on its own (either
+    // explicitly selected, or whose main object failed/was never requested).
+    for (const item of resolved) {
+      if (item.parentItemId && !usedIds.has(item.parentItemId)) {
+        throw new AppBadRequestException(
+          `Inventarobjekt ${item.inventoryNumber ?? item.id} ist Zubehör eines anderen Objekts und kann nicht einzeln ausgeliehen werden.`,
+          'ACCESSORY_CANNOT_BE_LOANED_ALONE',
+        );
+      }
     }
 
     return resolved;
@@ -637,6 +679,24 @@ export class LoansService {
     if (dto.items) {
       const desiredIds = new Set(dto.items.map((i) => i.inventoryItemId));
       const currentIds = new Set(loan.items.map((i) => i.inventoryItemId));
+
+      // Accessory consistency must hold for the *whole* resulting item set,
+      // not just newly added items - otherwise a request could keep an
+      // already-current accessory while dropping its main object from
+      // desiredIds and bypass resolveCheckoutItems() entirely.
+      const desiredItems = await this.prisma.inventoryItem.findMany({
+        where: { id: { in: [...desiredIds] } },
+      });
+      const orphanedAccessory = desiredItems.find(
+        (i) => i.parentItemId && !desiredIds.has(i.parentItemId),
+      );
+      if (orphanedAccessory) {
+        throw new AppBadRequestException(
+          `Inventarobjekt ${orphanedAccessory.inventoryNumber ?? orphanedAccessory.id} ist Zubehör eines anderen Objekts und kann nicht einzeln ausgeliehen werden.`,
+          'ACCESSORY_CANNOT_BE_LOANED_ALONE',
+        );
+      }
+
       toRemove = loan.items.filter((li) => !desiredIds.has(li.inventoryItemId));
       const newIds = dto.items
         .map((i) => i.inventoryItemId)

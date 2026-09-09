@@ -73,7 +73,10 @@ describe('LoansService', () => {
     prisma = {
       inventoryItem: {
         findFirst: jest.fn(),
-        findMany: jest.fn(),
+        // Defaults to "no accessories"/"no candidates" so tests that don't
+        // care about the accessory-bundling pass or article/quantity
+        // resolution don't need to stub this explicitly.
+        findMany: jest.fn().mockResolvedValue([]),
       },
       loanItem: {
         findFirst: jest.fn().mockResolvedValue(null), // no scheduling conflict by default
@@ -199,6 +202,75 @@ describe('LoansService', () => {
           createUser,
         ),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it("auto-bundles a resolved item's accessories into the loan", async () => {
+      prisma.inventoryItem.findFirst.mockResolvedValue({
+        id: 'main-1',
+        status: 'available',
+        inventoryNumber: 'MAIN-1',
+        parentItemId: null,
+      });
+      prisma.inventoryItem.findMany.mockResolvedValue([
+        {
+          id: 'acc-1',
+          status: 'available',
+          inventoryNumber: 'ACC-1',
+          parentItemId: 'main-1',
+        },
+      ]);
+
+      await service.create(
+        { ...dtoBase, items: [{ inventoryItemId: 'main-1' }] },
+        createUser,
+      );
+
+      expect(prisma.tx.loanItem.create).toHaveBeenCalledTimes(2);
+      expect(prisma.tx.loanItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ inventoryItemId: 'main-1' }),
+        }),
+      );
+      expect(prisma.tx.loanItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ inventoryItemId: 'acc-1' }),
+        }),
+      );
+    });
+
+    it('rejects loaning an accessory item on its own, without its main object', async () => {
+      prisma.inventoryItem.findFirst.mockResolvedValue({
+        id: 'acc-1',
+        status: 'available',
+        inventoryNumber: 'ACC-1',
+        parentItemId: 'main-1',
+      });
+      await expect(
+        service.create(
+          { ...dtoBase, items: [{ inventoryItemId: 'acc-1' }] },
+          createUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('never picks an accessory item to fulfill an articleId+quantity request', async () => {
+      prisma.inventoryItem.findMany.mockResolvedValue([
+        { id: 'item-1', status: 'available', parentItemId: null },
+      ]);
+
+      await service.create(
+        { ...dtoBase, items: [{ articleId: 'article-1', quantity: 1 }] },
+        createUser,
+      );
+
+      expect(prisma.inventoryItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            articleId: 'article-1',
+            parentItemId: null,
+          }),
+        }),
+      );
     });
 
     it('creates a "requested" loan for a loans.create actor and does not touch inventory status', async () => {
@@ -1030,6 +1102,55 @@ describe('LoansService', () => {
       });
       await expect(
         service.update('loan-1', { notes: 'x' }, manageUser),
+      ).resolves.toBeDefined();
+    });
+
+    it('rejects an update that keeps an accessory in the loan without its main object', async () => {
+      prisma.loan.findFirst.mockResolvedValue(editableLoan);
+      prisma.inventoryItem.findMany.mockResolvedValue([
+        { id: 'acc-1', parentItemId: 'main-1', inventoryNumber: 'ACC-1' },
+      ]);
+      await expect(
+        service.update(
+          'loan-1',
+          { items: [{ inventoryItemId: 'acc-1' }] },
+          administerUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('allows an update that keeps a main object together with its accessory', async () => {
+      prisma.loan.findFirst.mockResolvedValue({
+        ...editableLoan,
+        items: [
+          ...editableLoan.items,
+          {
+            id: 'li-2',
+            inventoryItemId: 'acc-1',
+            returnedAt: null,
+            approvedAt: null,
+            inventoryItem: {
+              ...editableLoan.items[0].inventoryItem,
+              id: 'acc-1',
+            },
+          },
+        ],
+      });
+      prisma.inventoryItem.findMany.mockResolvedValue([
+        { id: 'item-1', parentItemId: null, inventoryNumber: 'MAIN-1' },
+        { id: 'acc-1', parentItemId: 'item-1', inventoryNumber: 'ACC-1' },
+      ]);
+      await expect(
+        service.update(
+          'loan-1',
+          {
+            items: [
+              { inventoryItemId: 'item-1' },
+              { inventoryItemId: 'acc-1' },
+            ],
+          },
+          administerUser,
+        ),
       ).resolves.toBeDefined();
     });
 
