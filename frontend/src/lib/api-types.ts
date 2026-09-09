@@ -390,6 +390,8 @@ export interface EmailConfig {
   passwordSet: boolean;
   fromAddress: string | null;
   fromName: string | null;
+  /** Rich HTML footer appended to every outgoing notification email; falls back to a generic default text when empty. */
+  footerHtml: string | null;
 }
 
 export interface AppSettingsConfig {
@@ -408,4 +410,20 @@ export interface NotificationPreferenceEntry {
   key: string;
   label: string;
   enabled: boolean;
+}
+
+export interface TemplateVariable {
+  key: string;
+  description: string;
+}
+
+export interface NotificationTemplate {
+  eventKey: string;
+  label: string;
+  /** Includes both the universal (recipientName, appName) and event-specific placeholders. */
+  variables: TemplateVariable[];
+  subject: string;
+  bodyHtml: string;
+  isCustomized: boolean;
+  updatedAt: string | null;
 }

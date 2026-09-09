@@ -35,7 +35,7 @@ const SETTINGS_CHILDREN: NavItem[] = [
   },
   {
     to: '/settings/email',
-    label: 'E-Mail-Server',
+    label: 'E-Mail',
     icon: Mail,
     permission: PERMISSIONS.SETTINGS_MANAGE,
   },
