@@ -12,11 +12,14 @@ import { Pagination } from '@/components/ui/Pagination';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/toast';
 import { useAuth } from '@/auth/useAuth';
+import { PERMISSIONS } from '@/lib/permissions';
 import { UserCreateModal } from './UserCreateModal';
 import { UserDetailModal } from './UserDetailModal';
 
 export function UsersPage() {
-  const { me } = useAuth();
+  const { me, hasPermission } = useAuth();
+  const canCreate = hasPermission(PERMISSIONS.USERS_CREATE);
+  const canDelete = hasPermission(PERMISSIONS.USERS_DELETE);
   const queryClient = useQueryClient();
   const toast = useToast();
   const [page, setPage] = useState(1);
@@ -44,10 +47,12 @@ export function UsersPage() {
         title="Benutzer"
         description="Benutzerkonten, Rollen und Gruppenzugehörigkeiten verwalten."
         actions={
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus size={16} />
-            Neuer Benutzer
-          </Button>
+          canCreate && (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus size={16} />
+              Neuer Benutzer
+            </Button>
+          )
         }
       />
 
@@ -84,17 +89,20 @@ export function UsersPage() {
                       </Badge>
                     </td>
                     <td className="px-5 py-2.5 text-right">
-                      {user.id !== me?.id && (
-                        <Trash2
-                          size={14}
-                          className="ml-auto shrink-0 text-muted hover:text-red-600"
+                      {canDelete && user.id !== me?.id && (
+                        <button
+                          type="button"
+                          aria-label={`Benutzer "${user.displayName}" löschen`}
+                          className="-m-2 ml-auto shrink-0 p-2 text-muted hover:text-red-600"
                           onClick={(e) => {
                             e.stopPropagation();
                             if (window.confirm(`Benutzer "${user.displayName}" wirklich löschen?`)) {
                               deleteMutation.mutate(user.id);
                             }
                           }}
-                        />
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       )}
                     </td>
                   </tr>

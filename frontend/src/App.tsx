@@ -50,7 +50,7 @@ function App() {
                   <Route
                     path="inventory"
                     element={
-                      <PermissionGate permission={PERMISSIONS.INVENTORY_VIEW}>
+                      <PermissionGate permission={PERMISSIONS.INVENTORY_READ}>
                         <InventoryPage />
                       </PermissionGate>
                     }
@@ -58,7 +58,7 @@ function App() {
                   <Route
                     path="articles"
                     element={
-                      <PermissionGate permission={PERMISSIONS.INVENTORY_VIEW}>
+                      <PermissionGate permission={PERMISSIONS.ARTICLES_READ}>
                         <ArticlesPage />
                       </PermissionGate>
                     }
@@ -66,7 +66,7 @@ function App() {
                   <Route
                     path="locations"
                     element={
-                      <PermissionGate permission={PERMISSIONS.INVENTORY_VIEW}>
+                      <PermissionGate permission={PERMISSIONS.LOCATIONS_READ}>
                         <LocationsPage />
                       </PermissionGate>
                     }
@@ -74,7 +74,7 @@ function App() {
                   <Route
                     path="organizations"
                     element={
-                      <PermissionGate permission={PERMISSIONS.INVENTORY_VIEW}>
+                      <PermissionGate permission={PERMISSIONS.ORGANIZATIONS_READ}>
                         <OrganizationsPage />
                       </PermissionGate>
                     }
@@ -85,7 +85,7 @@ function App() {
                       <PermissionGate
                         permission={[
                           PERMISSIONS.LOANS_CREATE,
-                          PERMISSIONS.LOANS_VIEW,
+                          PERMISSIONS.LOANS_READ,
                           PERMISSIONS.LOANS_MANAGE,
                           PERMISSIONS.LOANS_SPEND,
                           PERMISSIONS.LOANS_ADMINISTER,
@@ -100,7 +100,7 @@ function App() {
                     element={
                       <PermissionGate
                         permission={[
-                          PERMISSIONS.LOANS_VIEW,
+                          PERMISSIONS.LOANS_READ,
                           PERMISSIONS.LOANS_MANAGE,
                           PERMISSIONS.LOANS_SPEND,
                           PERMISSIONS.LOANS_ADMINISTER,
@@ -113,7 +113,7 @@ function App() {
                   <Route
                     path="activity"
                     element={
-                      <PermissionGate permission={PERMISSIONS.INVENTORY_VIEW}>
+                      <PermissionGate permission={PERMISSIONS.INVENTORY_READ}>
                         <ActivityPage />
                       </PermissionGate>
                     }
@@ -121,7 +121,7 @@ function App() {
                   <Route
                     path="users"
                     element={
-                      <PermissionGate permission={PERMISSIONS.USERS_MANAGE}>
+                      <PermissionGate permission={PERMISSIONS.USERS_READ}>
                         <UsersPage />
                       </PermissionGate>
                     }
@@ -129,7 +129,7 @@ function App() {
                   <Route
                     path="roles"
                     element={
-                      <PermissionGate permission={PERMISSIONS.ROLES_MANAGE}>
+                      <PermissionGate permission={PERMISSIONS.ROLES_READ}>
                         <RolesPage />
                       </PermissionGate>
                     }
@@ -137,7 +137,7 @@ function App() {
                   <Route
                     path="groups"
                     element={
-                      <PermissionGate permission={PERMISSIONS.GROUPS_MANAGE}>
+                      <PermissionGate permission={PERMISSIONS.GROUPS_READ}>
                         <GroupsPage />
                       </PermissionGate>
                     }

@@ -21,6 +21,9 @@ export function UserDetailModal({ userId, onClose }: { userId: string; onClose: 
   const queryClient = useQueryClient();
   const toast = useToast();
   const { hasPermission } = useAuth();
+  const canUpdate = hasPermission(PERMISSIONS.USERS_UPDATE);
+  const canAssignRoles = hasPermission(PERMISSIONS.PERMISSIONS_ASSIGN);
+  const canManageGroups = hasPermission(PERMISSIONS.GROUPS_UPDATE);
   const canResetPassword = hasPermission(PERMISSIONS.USERS_RESET_PASSWORD);
   const canChangeEmail = hasPermission(PERMISSIONS.USERS_CHANGE_EMAIL);
 
@@ -35,11 +38,13 @@ export function UserDetailModal({ userId, onClose }: { userId: string; onClose: 
   const rolesQuery = useQuery({
     queryKey: ['roles'],
     queryFn: async () => (await api.get<Role[]>('/roles')).data,
+    enabled: canAssignRoles,
   });
   const groupsListQuery = useQuery({
     queryKey: ['groups', 'all'],
     queryFn: async () =>
       (await api.get<{ data: { id: string; name: string }[] }>('/groups', { params: { pageSize: 100 } })).data.data,
+    enabled: canManageGroups,
   });
 
   const [displayName, setDisplayName] = useState('');
@@ -144,20 +149,27 @@ export function UserDetailModal({ userId, onClose }: { userId: string; onClose: 
           className="grid grid-cols-1 gap-4 sm:grid-cols-2"
         >
           <Field label="Name">
-            <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+            <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} disabled={!canUpdate} />
           </Field>
           <Field label="E-Mail">
             <Input value={userQuery.data.email} disabled />
           </Field>
           <label className="flex items-center gap-2 text-sm text-ink">
-            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+              disabled={!canUpdate}
+            />
             Aktiv
           </label>
-          <div className="flex items-end justify-end">
-            <Button type="submit" size="sm" loading={updateMutation.isPending}>
-              Speichern
-            </Button>
-          </div>
+          {canUpdate && (
+            <div className="flex items-end justify-end">
+              <Button type="submit" size="sm" loading={updateMutation.isPending}>
+                Speichern
+              </Button>
+            </div>
+          )}
         </form>
 
         <div>
@@ -167,7 +179,7 @@ export function UserDetailModal({ userId, onClose }: { userId: string; onClose: 
               <Badge key={ur.role.id} tone="purple" className="gap-1 pr-1">
                 {ur.role.name}
                 {ur.source === 'group' && <span className="text-[10px] opacity-70">(via Gruppe)</span>}
-                {ur.source === 'manual' && (
+                {canAssignRoles && ur.source === 'manual' && (
                   <button onClick={() => removeRole.mutate(ur.role.id)} className="rounded-full hover:bg-black/10">
                     <X size={12} />
                   </button>
@@ -176,28 +188,32 @@ export function UserDetailModal({ userId, onClose }: { userId: string; onClose: 
             ))}
             {userQuery.data.userRoles.length === 0 && <span className="text-sm text-muted">Keine Rollen</span>}
           </div>
-          <div className="flex gap-2">
-            <Select value={roleToAdd} onChange={(e) => setRoleToAdd(e.target.value)} className="max-w-xs">
-              <option value="">Rolle hinzufügen …</option>
-              {availableRoles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </Select>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={!roleToAdd}
-              onClick={() => addRole.mutate(roleToAdd)}
-            >
-              Hinzufügen
-            </Button>
-          </div>
-          <p className="mt-1.5 text-xs text-muted">
-            Über eine Gruppe automatisch zugewiesene Rollen können nur durch Verlassen der Gruppe entfernt werden.
-          </p>
+          {canAssignRoles && (
+            <>
+              <div className="flex gap-2">
+                <Select value={roleToAdd} onChange={(e) => setRoleToAdd(e.target.value)} className="max-w-xs">
+                  <option value="">Rolle hinzufügen …</option>
+                  {availableRoles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!roleToAdd}
+                  onClick={() => addRole.mutate(roleToAdd)}
+                >
+                  Hinzufügen
+                </Button>
+              </div>
+              <p className="mt-1.5 text-xs text-muted">
+                Über eine Gruppe automatisch zugewiesene Rollen können nur durch Verlassen der Gruppe entfernt werden.
+              </p>
+            </>
+          )}
         </div>
 
         <div>
@@ -207,7 +223,7 @@ export function UserDetailModal({ userId, onClose }: { userId: string; onClose: 
               <Badge key={g.id} tone={g.source === 'manual' ? 'blue' : 'neutral'} className="gap-1 pr-1">
                 {g.group.name}
                 <span className="text-[10px] opacity-70">({g.source === 'manual' ? 'manuell' : 'ChurchTools'})</span>
-                {g.source === 'manual' && (
+                {canManageGroups && g.source === 'manual' && (
                   <button onClick={() => removeGroup.mutate(g.groupId)} className="rounded-full hover:bg-black/10">
                     <X size={12} />
                   </button>
@@ -216,28 +232,32 @@ export function UserDetailModal({ userId, onClose }: { userId: string; onClose: 
             ))}
             {groupsQuery.data?.length === 0 && <span className="text-sm text-muted">Keine Gruppen</span>}
           </div>
-          <div className="flex gap-2">
-            <Select value={groupToAdd} onChange={(e) => setGroupToAdd(e.target.value)} className="max-w-xs">
-              <option value="">Gruppe hinzufügen …</option>
-              {availableGroups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </Select>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={!groupToAdd}
-              onClick={() => addGroup.mutate(groupToAdd)}
-            >
-              Hinzufügen
-            </Button>
-          </div>
-          <p className="mt-1.5 text-xs text-muted">
-            ChurchTools-Mitgliedschaften werden beim Login synchronisiert und können hier nicht entfernt werden.
-          </p>
+          {canManageGroups && (
+            <>
+              <div className="flex gap-2">
+                <Select value={groupToAdd} onChange={(e) => setGroupToAdd(e.target.value)} className="max-w-xs">
+                  <option value="">Gruppe hinzufügen …</option>
+                  {availableGroups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!groupToAdd}
+                  onClick={() => addGroup.mutate(groupToAdd)}
+                >
+                  Hinzufügen
+                </Button>
+              </div>
+              <p className="mt-1.5 text-xs text-muted">
+                ChurchTools-Mitgliedschaften werden beim Login synchronisiert und können hier nicht entfernt werden.
+              </p>
+            </>
+          )}
         </div>
 
         {(canChangeEmail || canResetPassword) && (

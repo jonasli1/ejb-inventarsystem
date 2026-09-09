@@ -45,29 +45,29 @@ const SETTINGS_CHILDREN: NavItem[] = [
     icon: DatabaseBackup,
     permission: PERMISSIONS.SETTINGS_MANAGE,
   },
-  { to: '/users', label: 'Benutzer', icon: Users, permission: PERMISSIONS.USERS_MANAGE },
-  { to: '/roles', label: 'Rollen', icon: ShieldCheck, permission: PERMISSIONS.ROLES_MANAGE },
-  { to: '/groups', label: 'Gruppen', icon: UsersRound, permission: PERMISSIONS.GROUPS_MANAGE },
+  { to: '/users', label: 'Benutzer', icon: Users, permission: PERMISSIONS.USERS_READ },
+  { to: '/roles', label: 'Rollen', icon: ShieldCheck, permission: PERMISSIONS.ROLES_READ },
+  { to: '/groups', label: 'Gruppen', icon: UsersRound, permission: PERMISSIONS.GROUPS_READ },
   {
     to: '/organizations',
     label: 'Organisationen',
     icon: Building2,
-    permission: PERMISSIONS.INVENTORY_VIEW,
+    permission: PERMISSIONS.ORGANIZATIONS_READ,
   },
 ];
 
 export const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/inventory', label: 'Inventar', icon: Boxes, permission: PERMISSIONS.INVENTORY_VIEW },
-  { to: '/articles', label: 'Artikel', icon: Tags, permission: PERMISSIONS.INVENTORY_VIEW },
-  { to: '/locations', label: 'Lager', icon: Warehouse, permission: PERMISSIONS.INVENTORY_VIEW },
+  { to: '/inventory', label: 'Inventar', icon: Boxes, permission: PERMISSIONS.INVENTORY_READ },
+  { to: '/articles', label: 'Artikel', icon: Tags, permission: PERMISSIONS.ARTICLES_READ },
+  { to: '/locations', label: 'Lager', icon: Warehouse, permission: PERMISSIONS.LOCATIONS_READ },
   {
     to: '/loans',
     label: 'Ausleihe',
     icon: ArrowRightLeft,
     permission: [
       PERMISSIONS.LOANS_CREATE,
-      PERMISSIONS.LOANS_VIEW,
+      PERMISSIONS.LOANS_READ,
       PERMISSIONS.LOANS_MANAGE,
       PERMISSIONS.LOANS_SPEND,
       PERMISSIONS.LOANS_ADMINISTER,
@@ -78,13 +78,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Kalender',
     icon: CalendarDays,
     permission: [
-      PERMISSIONS.LOANS_VIEW,
+      PERMISSIONS.LOANS_READ,
       PERMISSIONS.LOANS_MANAGE,
       PERMISSIONS.LOANS_SPEND,
       PERMISSIONS.LOANS_ADMINISTER,
     ],
   },
-  { to: '/activity', label: 'Aktivitäten', icon: History, permission: PERMISSIONS.INVENTORY_VIEW },
+  { to: '/activity', label: 'Aktivitäten', icon: History, permission: PERMISSIONS.INVENTORY_READ },
   {
     to: '/settings',
     label: 'Einstellungen',

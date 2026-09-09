@@ -29,7 +29,7 @@ const TYPE_OPTIONS: StockMovementType[] = [
 
 export function ActivityPage() {
   const { hasPermission } = useAuth();
-  const canFilterByUser = hasPermission(PERMISSIONS.USERS_MANAGE);
+  const canFilterByUser = hasPermission(PERMISSIONS.USERS_READ);
 
   const [page, setPage] = useState(1);
   const [articleId, setArticleId] = useState('');

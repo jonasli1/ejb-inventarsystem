@@ -17,7 +17,9 @@ import { PERMISSIONS } from '@/lib/permissions';
 
 export function OrganizationsPage() {
   const { hasPermission } = useAuth();
-  const canManage = hasPermission(PERMISSIONS.ORGANIZATIONS_MANAGE);
+  const canCreate = hasPermission(PERMISSIONS.ORGANIZATIONS_CREATE);
+  const canUpdate = hasPermission(PERMISSIONS.ORGANIZATIONS_UPDATE);
+  const canDelete = hasPermission(PERMISSIONS.ORGANIZATIONS_DELETE);
   const { data: organizations, isLoading } = useOrganizations();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [orgModal, setOrgModal] = useState<{ open: boolean; editing: Organization | null }>({
@@ -46,7 +48,7 @@ export function OrganizationsPage() {
         title="Organisationen"
         description="Organisationen und Untereinheiten für den zweistufigen Eigentümer verwalten."
         actions={
-          canManage && (
+          canCreate && (
             <Button onClick={() => setOrgModal({ open: true, editing: null })}>
               <Plus size={16} />
               Neue Organisation
@@ -77,26 +79,36 @@ export function OrganizationsPage() {
                     }`}
                   >
                     <span className="font-medium">{o.name}</span>
-                    {canManage && (
-                      <span className="flex shrink-0 items-center gap-2">
-                        <Pencil
-                          size={14}
-                          className="text-muted hover:text-ink"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setOrgModal({ open: true, editing: o });
-                          }}
-                        />
-                        <Trash2
-                          size={14}
-                          className="text-muted hover:text-red-600"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (window.confirm(`Organisation "${o.name}" wirklich löschen?`)) {
-                              deleteOrgMutation.mutate(o.id);
-                            }
-                          }}
-                        />
+                    {(canUpdate || canDelete) && (
+                      <span className="flex shrink-0 items-center gap-1">
+                        {canUpdate && (
+                          <button
+                            type="button"
+                            aria-label={`Organisation "${o.name}" bearbeiten`}
+                            className="-m-2 p-2 text-muted hover:text-ink"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOrgModal({ open: true, editing: o });
+                            }}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            aria-label={`Organisation "${o.name}" löschen`}
+                            className="-m-2 p-2 text-muted hover:text-red-600"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Organisation "${o.name}" wirklich löschen?`)) {
+                                deleteOrgMutation.mutate(o.id);
+                              }
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </span>
                     )}
                   </button>
@@ -108,7 +120,7 @@ export function OrganizationsPage() {
           <Card className="md:col-span-2">
             <CardHeader>
               <CardTitle>Untereinheiten {selected ? `– ${selected.name}` : ''}</CardTitle>
-              {canManage && selected && (
+              {canCreate && selected && (
                 <Button size="sm" onClick={() => setUnitModal(true)}>
                   <Plus size={14} />
                   Untereinheit
@@ -116,7 +128,7 @@ export function OrganizationsPage() {
               )}
             </CardHeader>
             <CardBody>
-              {selected ? <UnitsList organizationId={selected.id} canManage={canManage} /> : null}
+              {selected ? <UnitsList organizationId={selected.id} canDelete={canDelete} /> : null}
             </CardBody>
           </Card>
         </div>
@@ -134,7 +146,7 @@ export function OrganizationsPage() {
   );
 }
 
-function UnitsList({ organizationId, canManage }: { organizationId: string; canManage: boolean }) {
+function UnitsList({ organizationId, canDelete }: { organizationId: string; canDelete: boolean }) {
   const { data: units, isLoading } = useOrganizationUnits(organizationId);
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -156,8 +168,12 @@ function UnitsList({ organizationId, canManage }: { organizationId: string; canM
       {units.map((u) => (
         <li key={u.id} className="flex items-center justify-between rounded-lg px-2.5 py-2 text-sm hover:bg-canvas">
           {u.name}
-          {canManage && (
-            <button onClick={() => deleteMutation.mutate(u.id)} className="text-muted hover:text-red-600">
+          {canDelete && (
+            <button
+              onClick={() => deleteMutation.mutate(u.id)}
+              aria-label={`Untereinheit "${u.name}" löschen`}
+              className="-m-2 p-2 text-muted hover:text-red-600"
+            >
               <Trash2 size={14} />
             </button>
           )}

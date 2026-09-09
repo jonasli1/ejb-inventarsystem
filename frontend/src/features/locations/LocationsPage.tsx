@@ -17,7 +17,9 @@ import { PERMISSIONS } from '@/lib/permissions';
 
 export function LocationsPage() {
   const { hasPermission } = useAuth();
-  const canManage = hasPermission(PERMISSIONS.LOCATIONS_MANAGE);
+  const canCreate = hasPermission(PERMISSIONS.LOCATIONS_CREATE);
+  const canUpdate = hasPermission(PERMISSIONS.LOCATIONS_UPDATE);
+  const canDelete = hasPermission(PERMISSIONS.LOCATIONS_DELETE);
   const { data: locations, isLoading } = useLocations();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [locationModal, setLocationModal] = useState<{ open: boolean; editing: Location | null }>({
@@ -46,7 +48,7 @@ export function LocationsPage() {
         title="Lager"
         description="Standorte und Räume verwalten."
         actions={
-          canManage && (
+          canCreate && (
             <Button onClick={() => setLocationModal({ open: true, editing: null })}>
               <Plus size={16} />
               Neuer Standort
@@ -80,26 +82,36 @@ export function LocationsPage() {
                       <span className="font-medium">{l.name}</span>
                       {l.address && <span className="block text-xs text-muted">{l.address}</span>}
                     </span>
-                    {canManage && (
-                      <span className="flex shrink-0 items-center gap-2">
-                        <Pencil
-                          size={14}
-                          className="text-muted hover:text-ink"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setLocationModal({ open: true, editing: l });
-                          }}
-                        />
-                        <Trash2
-                          size={14}
-                          className="text-muted hover:text-red-600"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (window.confirm(`Standort "${l.name}" wirklich löschen?`)) {
-                              deleteLocationMutation.mutate(l.id);
-                            }
-                          }}
-                        />
+                    {(canUpdate || canDelete) && (
+                      <span className="flex shrink-0 items-center gap-1">
+                        {canUpdate && (
+                          <button
+                            type="button"
+                            aria-label={`Standort "${l.name}" bearbeiten`}
+                            className="-m-2 p-2 text-muted hover:text-ink"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLocationModal({ open: true, editing: l });
+                            }}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            aria-label={`Standort "${l.name}" löschen`}
+                            className="-m-2 p-2 text-muted hover:text-red-600"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Standort "${l.name}" wirklich löschen?`)) {
+                                deleteLocationMutation.mutate(l.id);
+                              }
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </span>
                     )}
                   </button>
@@ -111,7 +123,7 @@ export function LocationsPage() {
           <Card className="md:col-span-2">
             <CardHeader>
               <CardTitle>Räume {selected ? `– ${selected.name}` : ''}</CardTitle>
-              {canManage && selected && (
+              {canCreate && selected && (
                 <Button size="sm" onClick={() => setRoomModal(true)}>
                   <Plus size={14} />
                   Raum
@@ -119,7 +131,7 @@ export function LocationsPage() {
               )}
             </CardHeader>
             <CardBody>
-              {selected ? <RoomsList locationId={selected.id} canManage={canManage} /> : null}
+              {selected ? <RoomsList locationId={selected.id} canDelete={canDelete} /> : null}
             </CardBody>
           </Card>
         </div>
@@ -137,7 +149,7 @@ export function LocationsPage() {
   );
 }
 
-function RoomsList({ locationId, canManage }: { locationId: string; canManage: boolean }) {
+function RoomsList({ locationId, canDelete }: { locationId: string; canDelete: boolean }) {
   const { data: rooms, isLoading } = useRooms(locationId);
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -159,8 +171,12 @@ function RoomsList({ locationId, canManage }: { locationId: string; canManage: b
       {rooms.map((r) => (
         <li key={r.id} className="flex items-center justify-between rounded-lg px-2.5 py-2 text-sm hover:bg-canvas">
           {r.name}
-          {canManage && (
-            <button onClick={() => deleteMutation.mutate(r.id)} className="text-muted hover:text-red-600">
+          {canDelete && (
+            <button
+              onClick={() => deleteMutation.mutate(r.id)}
+              aria-label={`Raum "${r.name}" löschen`}
+              className="-m-2 p-2 text-muted hover:text-red-600"
+            >
               <Trash2 size={14} />
             </button>
           )}

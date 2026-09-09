@@ -22,11 +22,15 @@ function useCount(key: string, url: string, enabled: boolean) {
 export function DashboardPage() {
   const { me, hasPermission } = useAuth();
 
-  const canViewInventory = hasPermission(PERMISSIONS.INVENTORY_VIEW);
+  const canViewInventory = hasPermission(PERMISSIONS.INVENTORY_READ);
+  const canViewArticles = hasPermission(PERMISSIONS.ARTICLES_READ);
+  const canViewOrganizations = hasPermission(PERMISSIONS.ORGANIZATIONS_READ);
 
-  const inventoryCount = useCount('inventory', '/inventory', canViewInventory);
-  const articlesCount = useCount('articles', '/articles', canViewInventory);
-  const organizationsCount = useCount('organizations', '/organizations', canViewInventory);
+  // GET /inventory (flat list) is keyset/cursor-paginated and deliberately
+  // has no cheap total count at scale (>1M rows) - the Inventar tile is a
+  // plain navigation link instead of a live counter, see the other tiles.
+  const articlesCount = useCount('articles', '/articles', canViewArticles);
+  const organizationsCount = useCount('organizations', '/organizations', canViewOrganizations);
   const openLoansCount = useQuery({
     queryKey: ['count', 'loans-open'],
     queryFn: async () => {
@@ -45,8 +49,8 @@ export function DashboardPage() {
 
   const stats = [
     {
-      label: 'Inventarobjekte',
-      value: inventoryCount.data,
+      label: 'Inventar',
+      value: undefined,
       icon: Boxes,
       to: '/inventory',
       show: canViewInventory,
@@ -56,7 +60,7 @@ export function DashboardPage() {
       value: articlesCount.data,
       icon: Tags,
       to: '/articles',
-      show: canViewInventory,
+      show: canViewArticles,
     },
     {
       label: 'Offene Ausleihen',
@@ -70,7 +74,7 @@ export function DashboardPage() {
       value: organizationsCount.data,
       icon: Building2,
       to: '/organizations',
-      show: canViewInventory,
+      show: canViewOrganizations,
     },
   ].filter((s) => s.show);
 
@@ -91,7 +95,11 @@ export function DashboardPage() {
                     <stat.icon size={19} />
                   </div>
                   <div>
-                    <p className="text-2xl font-semibold text-ink">{stat.value ?? '–'}</p>
+                    {stat.value !== undefined ? (
+                      <p className="text-2xl font-semibold text-ink">{stat.value}</p>
+                    ) : (
+                      <p className="text-sm font-semibold text-ink">Bestand ansehen</p>
+                    )}
                     <p className="text-sm text-muted">{stat.label}</p>
                   </div>
                 </CardBody>

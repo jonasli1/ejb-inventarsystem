@@ -13,6 +13,8 @@ import { Field, Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/toast';
+import { useAuth } from '@/auth/useAuth';
+import { PERMISSIONS } from '@/lib/permissions';
 import { RoleDetailModal } from './RoleDetailModal';
 
 const PROTECTED_ROLE_NAME = 'Admin';
@@ -58,6 +60,9 @@ function PermissionsInfoCard() {
 }
 
 export function RolesPage() {
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission(PERMISSIONS.ROLES_CREATE);
+  const canDelete = hasPermission(PERMISSIONS.ROLES_DELETE);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -82,10 +87,12 @@ export function RolesPage() {
         title="Rollen"
         description="Rollen bündeln Berechtigungen und werden Benutzern zugewiesen."
         actions={
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus size={16} />
-            Neue Rolle
-          </Button>
+          canCreate && (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus size={16} />
+              Neue Rolle
+            </Button>
+          )
         }
       />
 
@@ -123,16 +130,21 @@ export function RolesPage() {
                         />
                       </span>
                     ) : (
-                      <Trash2
-                        size={14}
-                        className="shrink-0 text-muted hover:text-red-600"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm(`Rolle "${role.name}" wirklich löschen?`)) {
-                            deleteMutation.mutate(role.id);
-                          }
-                        }}
-                      />
+                      canDelete && (
+                        <button
+                          type="button"
+                          aria-label={`Rolle "${role.name}" löschen`}
+                          className="-m-2 shrink-0 p-2 text-muted hover:text-red-600"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Rolle "${role.name}" wirklich löschen?`)) {
+                              deleteMutation.mutate(role.id);
+                            }
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )
                     )}
                   </span>
                 </button>

@@ -13,9 +13,14 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/toast';
+import { useAuth } from '@/auth/useAuth';
+import { PERMISSIONS } from '@/lib/permissions';
 import { GroupDetailModal } from './GroupDetailModal';
 
 export function GroupsPage() {
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission(PERMISSIONS.GROUPS_CREATE);
+  const canDelete = hasPermission(PERMISSIONS.GROUPS_DELETE);
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -43,10 +48,12 @@ export function GroupsPage() {
         title="Gruppen"
         description="Gruppen aus ChurchTools (automatisch synchronisiert) und manuell angelegte Gruppen."
         actions={
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus size={16} />
-            Neue Gruppe
-          </Button>
+          canCreate && (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus size={16} />
+              Neue Gruppe
+            </Button>
+          )
         }
       />
 
@@ -81,16 +88,20 @@ export function GroupsPage() {
                       </Badge>
                     </td>
                     <td className="px-5 py-2.5 text-right">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteMutation.mutate(group.id);
-                        }}
-                        className="text-muted hover:text-red-600"
-                        aria-label={`${group.name} löschen`}
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      {canDelete && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Gruppe "${group.name}" wirklich löschen?`)) {
+                              deleteMutation.mutate(group.id);
+                            }
+                          }}
+                          className="-m-2 p-2 text-muted hover:text-red-600"
+                          aria-label={`Gruppe "${group.name}" löschen`}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

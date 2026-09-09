@@ -10,10 +10,14 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/toast';
+import { useAuth } from '@/auth/useAuth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export function GroupDetailModal({ groupId, onClose }: { groupId: string; onClose: () => void }) {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { hasPermission } = useAuth();
+  const canUpdate = hasPermission(PERMISSIONS.GROUPS_UPDATE);
 
   const groupQuery = useQuery({
     queryKey: ['groups', groupId],
@@ -31,6 +35,7 @@ export function GroupDetailModal({ groupId, onClose }: { groupId: string; onClos
   const rolesQuery = useQuery({
     queryKey: ['roles'],
     queryFn: async () => (await api.get<Role[]>('/roles')).data,
+    enabled: canUpdate,
   });
   const { data: organizations } = useOrganizations();
 
@@ -113,58 +118,62 @@ export function GroupDetailModal({ groupId, onClose }: { groupId: string; onClos
               <Badge key={scope.id} tone="blue" className="gap-1 pr-1">
                 {scope.organization.name}
                 {scope.organizationUnit ? ` / ${scope.organizationUnit.name}` : ' (ganze Organisation)'}
-                <button
-                  onClick={() => removeScope.mutate(scope.id)}
-                  className="rounded-full hover:bg-black/10"
-                >
-                  <X size={12} />
-                </button>
+                {canUpdate && (
+                  <button
+                    onClick={() => removeScope.mutate(scope.id)}
+                    className="rounded-full hover:bg-black/10"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
               </Badge>
             ))}
             {scopesQuery.data?.length === 0 && (
               <span className="text-sm text-muted">Keine Zuordnung</span>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Select
-              value={scopeOrgId}
-              onChange={(e) => {
-                setScopeOrgId(e.target.value);
-                setScopeUnitId('');
-              }}
-              className="max-w-xs"
-            >
-              <option value="">Organisation wählen …</option>
-              {organizations?.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              value={scopeUnitId}
-              onChange={(e) => setScopeUnitId(e.target.value)}
-              className="max-w-xs"
-              disabled={!scopeOrgId}
-            >
-              <option value="">Ganze Organisation</option>
-              {unitsForScopeOrg?.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </Select>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={!scopeOrgId}
-              loading={addScope.isPending}
-              onClick={() => addScope.mutate()}
-            >
-              Hinzufügen
-            </Button>
-          </div>
+          {canUpdate && (
+            <div className="flex flex-wrap gap-2">
+              <Select
+                value={scopeOrgId}
+                onChange={(e) => {
+                  setScopeOrgId(e.target.value);
+                  setScopeUnitId('');
+                }}
+                className="max-w-xs"
+              >
+                <option value="">Organisation wählen …</option>
+                {organizations?.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                value={scopeUnitId}
+                onChange={(e) => setScopeUnitId(e.target.value)}
+                className="max-w-xs"
+                disabled={!scopeOrgId}
+              >
+                <option value="">Ganze Organisation</option>
+                {unitsForScopeOrg?.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={!scopeOrgId}
+                loading={addScope.isPending}
+                onClick={() => addScope.mutate()}
+              >
+                Hinzufügen
+              </Button>
+            </div>
+          )}
         </div>
 
         <div>
@@ -177,37 +186,41 @@ export function GroupDetailModal({ groupId, onClose }: { groupId: string; onClos
             {groupRolesQuery.data?.map((gr) => (
               <Badge key={gr.roleId} tone="purple" className="gap-1 pr-1">
                 {gr.role.name}
-                <button
-                  onClick={() => removeRole.mutate(gr.roleId)}
-                  className="rounded-full hover:bg-black/10"
-                >
-                  <X size={12} />
-                </button>
+                {canUpdate && (
+                  <button
+                    onClick={() => removeRole.mutate(gr.roleId)}
+                    className="rounded-full hover:bg-black/10"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
               </Badge>
             ))}
             {groupRolesQuery.data?.length === 0 && (
               <span className="text-sm text-muted">Keine automatische Rollenzuweisung</span>
             )}
           </div>
-          <div className="flex gap-2">
-            <Select value={roleToAdd} onChange={(e) => setRoleToAdd(e.target.value)} className="max-w-xs">
-              <option value="">Rolle hinzufügen …</option>
-              {availableRoles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </Select>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={!roleToAdd}
-              onClick={() => addRole.mutate(roleToAdd)}
-            >
-              Hinzufügen
-            </Button>
-          </div>
+          {canUpdate && (
+            <div className="flex gap-2">
+              <Select value={roleToAdd} onChange={(e) => setRoleToAdd(e.target.value)} className="max-w-xs">
+                <option value="">Rolle hinzufügen …</option>
+                {availableRoles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={!roleToAdd}
+                onClick={() => addRole.mutate(roleToAdd)}
+              >
+                Hinzufügen
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </Modal>
