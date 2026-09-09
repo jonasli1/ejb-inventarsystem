@@ -1,31 +1,29 @@
-import { useForm } from 'react-hook-form';
+import { useEffect } from 'react';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
-import { api, getApiErrorMessage } from '@/lib/api-client';
-import { useArticles, useLocations, useOrganizations, useOrganizationUnits, useRooms } from '@/lib/reference-data';
+import { api, getApiErrorCode, getApiErrorMessage } from '@/lib/api-client';
+import { useLocations, useOrganizations, useOrganizationUnits, useRooms } from '@/lib/reference-data';
+import type { Article } from '@/lib/api-types';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/toast';
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { ArticleSearchSelect } from '@/components/ui/ArticleSearchSelect';
 
 const schema = z.object({
-  articleId: z.string().min(1, 'Pflichtfeld'),
+  article: z.custom<Article>((v) => !!v, 'Pflichtfeld'),
   locationId: z.string().min(1, 'Pflichtfeld'),
   roomId: z.string().min(1, 'Pflichtfeld'),
   ownerOrganizationId: z.string().min(1, 'Pflichtfeld'),
   ownerUnitId: z.string().min(1, 'Pflichtfeld'),
   inventoryNumber: z.string().optional(),
   serialNumber: z.string().optional(),
-  conditionPercent: z.string().optional(),
   purchasePrice: z.string().optional(),
   purchaseDate: z.string().optional(),
+  nextDguvV3Check: z.string().optional(),
   notes: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
@@ -33,34 +31,31 @@ type FormValues = z.infer<typeof schema>;
 export function InventoryItemCreateModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const { data: articles } = useArticles();
   const { data: locations } = useLocations();
   const {
+    control,
     register,
     handleSubmit,
     watch,
     reset,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const locationId = watch('locationId');
   const ownerOrganizationId = watch('ownerOrganizationId');
-  const articleId = watch('articleId');
   const { data: rooms } = useRooms(locationId || undefined);
   const { data: organizations } = useOrganizations();
   const { data: units } = useOrganizationUnits(ownerOrganizationId || undefined);
 
-  const selectedArticle = articles?.find((a) => a.id === articleId);
-  const isConsumable = selectedArticle?.type === 'CONSUMABLE';
-
   useEffect(() => {
-    if (open) reset({ purchaseDate: todayIso() });
+    if (open) reset({});
   }, [open, reset]);
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
       await api.post('/inventory', {
-        articleId: values.articleId,
+        articleId: values.article.id,
         locationId: values.locationId,
         roomId: values.roomId,
         ownerOrganizationId: values.ownerOrganizationId,
@@ -70,8 +65,7 @@ export function InventoryItemCreateModal({ open, onClose }: { open: boolean; onC
         notes: values.notes || undefined,
         purchasePrice: values.purchasePrice ? Number(values.purchasePrice) : undefined,
         purchaseDate: values.purchaseDate || undefined,
-        conditionPercent:
-          isConsumable && values.conditionPercent ? Number(values.conditionPercent) : undefined,
+        nextDguvV3Check: values.nextDguvV3Check || undefined,
       });
     },
     onSuccess: () => {
@@ -80,7 +74,12 @@ export function InventoryItemCreateModal({ open, onClose }: { open: boolean; onC
       toast.push('Inventarobjekt wurde angelegt.');
       onClose();
     },
-    onError: (err) => toast.push(getApiErrorMessage(err), 'error'),
+    onError: (err) => {
+      if (getApiErrorCode(err) === 'DUPLICATE_INVENTORY_NUMBER') {
+        setError('inventoryNumber', { type: 'server', message: getApiErrorMessage(err) });
+      }
+      toast.push(getApiErrorMessage(err), 'error');
+    },
   });
 
   return (
@@ -89,21 +88,24 @@ export function InventoryItemCreateModal({ open, onClose }: { open: boolean; onC
         onSubmit={handleSubmit((values) => mutation.mutate(values))}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
-        <Field label="Artikel" error={errors.articleId?.message}>
-          <Select {...register('articleId')} defaultValue="">
-            <option value="" disabled>
-              Artikel wählen …
-            </option>
-            {articles?.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <div className="sm:col-span-2">
+          <Field label="Artikel" error={errors.article?.message as string | undefined}>
+            <Controller
+              name="article"
+              control={control}
+              render={({ field }) => (
+                <ArticleSearchSelect
+                  selected={field.value ?? null}
+                  onSelect={field.onChange}
+                  onClear={() => field.onChange(undefined)}
+                />
+              )}
+            />
+          </Field>
+        </div>
 
-        <Field label="Inventarnummer (optional)">
-          <Input placeholder="wird automatisch generiert" {...register('inventoryNumber')} />
+        <Field label="Inventarnummer (optional)" error={errors.inventoryNumber?.message}>
+          <Input {...register('inventoryNumber')} />
         </Field>
 
         <Field label="Standort" error={errors.locationId?.message}>
@@ -162,18 +164,16 @@ export function InventoryItemCreateModal({ open, onClose }: { open: boolean; onC
           <Input {...register('serialNumber')} />
         </Field>
 
-        {isConsumable && (
-          <Field label="Füllstand % (optional)">
-            <Input type="number" min={1} max={100} {...register('conditionPercent')} />
-          </Field>
-        )}
-
         <Field label="Anschaffungspreis € (optional)">
           <Input type="number" min={0} step="0.01" {...register('purchasePrice')} />
         </Field>
 
-        <Field label="Anschaffungsdatum">
+        <Field label="Anschaffungsdatum (optional)">
           <Input type="date" {...register('purchaseDate')} />
+        </Field>
+
+        <Field label="Nächste DGUV-V3-Prüfung (optional)">
+          <Input type="date" {...register('nextDguvV3Check')} />
         </Field>
 
         <div className="sm:col-span-2">

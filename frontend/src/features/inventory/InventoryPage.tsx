@@ -30,7 +30,7 @@ const STATUS_OPTIONS: InventoryStatus[] = ['available', 'borrowed', 'maintenance
 
 export function InventoryPage() {
   const { hasPermission } = useAuth();
-  const canManage = hasPermission(PERMISSIONS.INVENTORY_MANAGE);
+  const canCreate = hasPermission(PERMISSIONS.INVENTORY_CREATE);
   const canExport = hasPermission(PERMISSIONS.REPORTS_VIEW);
 
   const [exportGroupBy, setExportGroupBy] = useState<'' | 'owner' | 'location'>('');
@@ -187,7 +187,7 @@ export function InventoryPage() {
                 />
               </>
             )}
-            {canManage && (
+            {canCreate && (
               <Button onClick={() => setCreateOpen(true)}>
                 <Plus size={16} />
                 Neues Objekt
@@ -204,6 +204,8 @@ export function InventoryPage() {
             <Input
               className="pl-9"
               placeholder="Suche nach Name, Inventarnummer, Hersteller, Kategorie, Eigentümer, Standort …"
+              role="searchbox"
+              name="inventory-search"
               autoComplete="off"
               value={search}
               onChange={(e) => {
@@ -228,7 +230,9 @@ export function InventoryPage() {
                         >
                           <span className="text-ink">
                             {item.article.name}{' '}
-                            <span className="font-mono text-xs text-muted">{item.inventoryNumber}</span>
+                            {item.inventoryNumber && (
+                              <span className="font-mono text-xs text-muted">{item.inventoryNumber}</span>
+                            )}
                           </span>
                           <span className="text-xs text-muted">
                             {item.ownerOrganization.name} · {item.location.name} ·{' '}
@@ -389,7 +393,7 @@ function ItemsTable({
               <td className={`py-2.5 ${nested ? 'pl-12' : 'pl-5'}`}>
                 <ArticleImageThumbnail articleId={item.articleId} size="h-8 w-8" />
               </td>
-              <td className="px-5 py-2.5 font-mono text-xs text-ink">{item.inventoryNumber}</td>
+              <td className="px-5 py-2.5 font-mono text-xs text-ink">{item.inventoryNumber ?? '–'}</td>
               <td className="px-5 py-2.5 text-ink">{item.article.name}</td>
               <td className="px-5 py-2.5">
                 <InventoryStatusBadge status={item.status} />
