@@ -36,7 +36,13 @@ export function ImageUploadField({
       ).data,
   });
   const image = query.data?.[0] ?? null;
-  const { url: objectUrl } = useAttachmentBlobUrl(image?.thumbnailUrl, !!image);
+  // Built relative to the axios client's baseURL - see the comment in
+  // FileUploadList's AttachmentThumbnail for why attachment.thumbnailUrl
+  // itself can't be passed through directly.
+  const { url: objectUrl } = useAttachmentBlobUrl(
+    image ? `/attachments/${image.id}/thumbnail` : null,
+    !!image,
+  );
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {

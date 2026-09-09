@@ -36,7 +36,15 @@ export function AttachmentThumbnail({
 }) {
   const isImage = attachment.mimeType.startsWith('image/');
   const [ref, inView] = useInView<HTMLDivElement>();
-  const { url, isError } = useAttachmentBlobUrl(attachment.thumbnailUrl, isImage && inView);
+  // attachment.thumbnailUrl is an app-root-relative URL (already includes the
+  // API prefix, e.g. "/api/v1/attachments/:id/thumbnail") meant for direct
+  // browser navigation - the axios client's baseURL would double that prefix
+  // if used as-is, so the path is built relative to baseURL here instead,
+  // matching every other attachment endpoint call in the app.
+  const { url, isError } = useAttachmentBlobUrl(
+    isImage ? `/attachments/${attachment.id}/thumbnail` : null,
+    isImage && inView,
+  );
   const lightbox = useLightbox();
 
   if (!isImage) {
