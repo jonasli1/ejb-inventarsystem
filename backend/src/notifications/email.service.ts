@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import nodemailer from 'nodemailer';
+import nodemailer, { type Transporter } from 'nodemailer';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AppBadRequestException } from '../common/exceptions/app.exception';
@@ -92,7 +92,7 @@ export class EmailService {
   }
 
   private async buildTransport(): Promise<{
-    transport: nodemailer.Transporter;
+    transport: Transporter;
     fromAddress: string;
     fromName: string | null;
   } | null> {
