@@ -141,7 +141,10 @@ export class LoansController {
   @RequirePermissions(PERMISSIONS.LOANS_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    await this.loansService.remove(id);
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.loansService.remove(id, user);
   }
 }

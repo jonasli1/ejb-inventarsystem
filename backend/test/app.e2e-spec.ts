@@ -524,6 +524,95 @@ describe('Inventarsystem API (e2e)', () => {
       });
     });
 
+    it('deleting an issued loan reverts its still-borrowed item back to its previous status', async () => {
+      const org = await request(app.getHttpServer())
+        .post('/api/v1/organizations')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Delete-Reverts Org' })
+        .expect(201);
+      const unit = await request(app.getHttpServer())
+        .post(`/api/v1/organizations/${org.body.id}/units`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Delete-Reverts Unit' })
+        .expect(201);
+      const location = await request(app.getHttpServer())
+        .post('/api/v1/locations')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Delete-Reverts Location' })
+        .expect(201);
+      const room = await request(app.getHttpServer())
+        .post('/api/v1/rooms')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Delete-Reverts Room', locationId: location.body.id })
+        .expect(201);
+      const article = await request(app.getHttpServer())
+        .post('/api/v1/articles')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Delete-Reverts Article' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          articleId: article.body.id,
+          locationId: location.body.id,
+          roomId: room.body.id,
+          ownerOrganizationId: org.body.id,
+          ownerUnitId: unit.body.id,
+        })
+        .expect(201);
+
+      const loan = await request(app.getHttpServer())
+        .post('/api/v1/loans')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          borrowerName: 'Delete-Reverts Borrower',
+          ...LOAN_BORROWER_FIELDS,
+          items: [{ articleId: article.body.id, quantity: 1 }],
+        })
+        .expect(201);
+      expect(loan.body.status).toBe('approved');
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/loans/${loan.body.id}/issue`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({})
+        .expect(201);
+
+      const afterIssue = await request(app.getHttpServer())
+        .get(`/api/v1/articles/${article.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(afterIssue.body.stock).toEqual({
+        total: 1,
+        available: 0,
+        borrowed: 1,
+      });
+
+      // Deleted while still issued (never returned) - the item must not be
+      // left stuck on "borrowed" forever; it reverts to its status from
+      // before this loan issued it (here: available).
+      await request(app.getHttpServer())
+        .delete(`/api/v1/loans/${loan.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(204);
+
+      const afterDelete = await request(app.getHttpServer())
+        .get(`/api/v1/articles/${article.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(afterDelete.body.stock).toEqual({
+        total: 1,
+        available: 1,
+        borrowed: 0,
+      });
+
+      await request(app.getHttpServer())
+        .get(`/api/v1/loans/${loan.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(404);
+    });
+
     it('rejects checking out more units than are available', async () => {
       const org = await request(app.getHttpServer())
         .post('/api/v1/organizations')
@@ -2227,8 +2316,8 @@ describe('Inventarsystem API (e2e)', () => {
       expect(forcedRequested.body.status).toBe('requested');
     });
 
-    it('rejects a loans.manage holder creating a loan with items outside their organization/unit scope', async () => {
-      await request(app.getHttpServer())
+    it('partially auto-approves a loans.manage holder creating a loan with items outside their organization/unit scope, instead of rejecting it', async () => {
+      const crossOrg = await request(app.getHttpServer())
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${managerBToken}`)
         .send({
@@ -2236,7 +2325,16 @@ describe('Inventarsystem API (e2e)', () => {
           ...borrowerFields,
           items: [{ inventoryItemId: itemA.id }],
         })
-        .expect(403);
+        .expect(201);
+      expect(crossOrg.body.status).toBe('requested');
+      expect(crossOrg.body.items[0].approvedAt).toBeNull();
+
+      // Deleted (rather than left lingering) so it doesn't hold a scheduling
+      // claim on itemA's date range for later tests in this block.
+      await request(app.getHttpServer())
+        .delete(`/api/v1/loans/${crossOrg.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
     });
 
     it("lets the loan's creator edit it with only loans.create, and lets loans.manage edit any loan unconditionally", async () => {

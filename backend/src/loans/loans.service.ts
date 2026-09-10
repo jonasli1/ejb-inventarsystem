@@ -180,24 +180,6 @@ export class LoansService {
     );
   }
 
-  /** create()'s loans.manage fast-path: a hard block, not just an approval gate. */
-  private async assertItemsWithinActorScope(
-    items: Pick<
-      InventoryItem,
-      'id' | 'inventoryNumber' | 'ownerOrganizationId' | 'ownerUnitId'
-    >[],
-    userId: string,
-  ): Promise<void> {
-    const scope = await this.groups.getLoanScopeForUser(userId);
-    const outOfScope = items.find((i) => !this.isItemInScope(scope, i));
-    if (outOfScope) {
-      throw new AppForbiddenException(
-        `Inventarobjekt ${outOfScope.inventoryNumber ?? outOfScope.id} gehört zu keiner Ihrer Organisationen/Bereiche.`,
-        'ITEM_OUT_OF_SCOPE',
-      );
-    }
-  }
-
   /**
    * update(): the loan's creator may always edit it, even with only
    * loans.create. loans.manage may edit ANY loan, unconditionally (no org/unit
@@ -570,14 +552,32 @@ export class LoansService {
       dueDate,
     );
 
+    // Which item ids get stamped approved on creation - null covers "none".
+    // loans.manage no longer hard-blocks out-of-scope items here (that
+    // stays reserved for approve()'s explicit gate); it now auto-approves
+    // whatever is in scope and leaves the rest for normal approval,
+    // matching the same partial-approval invariant approve() already
+    // maintains (status===approved <=> every item approved).
     let status: LoanStatus = LoanStatus.requested;
+    let approvedItemIds: Set<string> | null = null;
     if (tier === 'administer') {
       status = dto.forceRequested ? LoanStatus.requested : LoanStatus.approved;
-    } else if (tier === 'manage') {
-      await this.assertItemsWithinActorScope(resolvedItems, user.id);
-      status = dto.forceRequested ? LoanStatus.requested : LoanStatus.approved;
+      if (status === LoanStatus.approved) {
+        approvedItemIds = new Set(resolvedItems.map((i) => i.id));
+      }
+    } else if (tier === 'manage' && !dto.forceRequested) {
+      const scope = await this.groups.getLoanScopeForUser(user.id);
+      const inScopeItems = resolvedItems.filter((i) =>
+        this.isItemInScope(scope, i),
+      );
+      approvedItemIds = new Set(inScopeItems.map((i) => i.id));
+      status =
+        inScopeItems.length === resolvedItems.length
+          ? LoanStatus.approved
+          : LoanStatus.requested;
     }
-    // tier === 'create': always requested, any organization, forceRequested ignored.
+    // tier === 'create', or tier === 'manage' with forceRequested: always
+    // requested, any organization, nothing pre-approved.
 
     const createdLoan = await this.prisma.$transaction(async (tx) => {
       const loan = await tx.loan.create({
@@ -602,11 +602,7 @@ export class LoansService {
           data: {
             loanId: loan.id,
             inventoryItemId: item.id,
-            // Fast-path approved loans (administer/manage without
-            // forceRequested) must stamp every item as approved too, or the
-            // per-item approval invariant (status===approved <=> every item
-            // approved) would be violated from the moment of creation.
-            ...(status === LoanStatus.approved
+            ...(approvedItemIds?.has(item.id)
               ? { approvedAt: new Date(), approvedByUserId: user.id }
               : {}),
           },
@@ -1096,12 +1092,72 @@ export class LoansService {
    * (see permissions.guard usage in LoansController) since this is
    * irreversible and distinct from every other loan action.
    */
-  async remove(loanId: string): Promise<void> {
+  async remove(loanId: string, user: AuthenticatedUser): Promise<void> {
     const loan = await this.prisma.loan.findFirst({
       where: { id: loanId },
-      select: { id: true, borrowerName: true, borrowerPersonId: true },
+      select: {
+        id: true,
+        status: true,
+        borrowerName: true,
+        borrowerPersonId: true,
+        items: {
+          where: { returnedAt: null },
+          select: { id: true, inventoryItemId: true },
+        },
+      },
     });
     if (!loan) throw new AppNotFoundException('Ausleihe nicht gefunden.');
-    await this.prisma.loan.delete({ where: { id: loanId } });
+
+    await this.prisma.$transaction(async (tx) => {
+      // Deleting an issued loan must not leave its still-borrowed items
+      // stuck on `borrowed` forever - revert each to whatever status it
+      // held right before this loan issued it (looked up from that
+      // item's own status_change history), falling back to `available`
+      // if no such movement is found.
+      if (loan.status === LoanStatus.issued) {
+        for (const item of loan.items) {
+          const issueMovement = await tx.stockMovement.findFirst({
+            where: {
+              loanItemId: item.id,
+              type: StockMovementType.status_change,
+              newStatus: InventoryStatus.borrowed,
+            },
+            orderBy: { createdAt: 'desc' },
+          });
+          const revertStatus =
+            issueMovement?.oldStatus ?? InventoryStatus.available;
+
+          await tx.inventoryItem.update({
+            where: { id: item.inventoryItemId },
+            data: { status: revertStatus },
+          });
+
+          await tx.stockMovement.create({
+            data: {
+              inventoryItemId: item.inventoryItemId,
+              loanItemId: item.id,
+              type: StockMovementType.status_change,
+              oldStatus: InventoryStatus.borrowed,
+              newStatus: revertStatus,
+              userId: user.id,
+              note: `Status zurückgesetzt (Ausleihe ${loanId} gelöscht)`,
+            },
+          });
+        }
+      }
+
+      await this.audit.log(
+        {
+          entityType: 'Loan',
+          entityId: loanId,
+          action: 'delete',
+          summary: `Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" gelöscht`,
+          userId: user.id,
+        },
+        tx,
+      );
+
+      await tx.loan.delete({ where: { id: loanId } });
+    });
   }
 }
