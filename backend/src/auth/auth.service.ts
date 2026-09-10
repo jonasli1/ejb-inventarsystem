@@ -30,7 +30,7 @@ import type { TokenResponseDto } from './dto/token-response.dto';
 import type { ChangePasswordDto } from './dto/change-password.dto';
 import type {
   AuthenticationResponseJSON,
-  AuthenticatorTransportFuture,
+  AuthenticatorTransport,
   RegistrationResponseJSON,
 } from '@simplewebauthn/server';
 
@@ -646,7 +646,7 @@ export class AuthService {
     await this.assertPasskeyEnabled();
     let allowCredentials: {
       id: string;
-      transports?: AuthenticatorTransportFuture[];
+      transports?: AuthenticatorTransport[];
     }[] = [];
 
     if (email) {
@@ -658,7 +658,7 @@ export class AuthService {
         .filter((i) => i.provider === AuthProvider.passkey && i.credentialId)
         .map((i) => ({
           id: i.credentialId!,
-          transports: i.transports as AuthenticatorTransportFuture[],
+          transports: i.transports as AuthenticatorTransport[],
         }));
     }
 
@@ -697,7 +697,7 @@ export class AuthService {
         id: identity.credentialId!,
         publicKey: new Uint8Array(Buffer.from(identity.publicKey, 'base64url')),
         counter: Number(identity.signCount),
-        transports: identity.transports as AuthenticatorTransportFuture[],
+        transports: identity.transports as AuthenticatorTransport[],
       },
     );
 

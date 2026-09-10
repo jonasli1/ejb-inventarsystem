@@ -12,7 +12,7 @@ import {
 } from '@simplewebauthn/server';
 import type {
   AuthenticationResponseJSON,
-  AuthenticatorTransportFuture,
+  AuthenticatorTransport,
   RegistrationResponseJSON,
   WebAuthnCredential,
 } from '@simplewebauthn/server';
@@ -87,7 +87,7 @@ export class WebauthnService {
   async createAuthenticationOptions(
     allowCredentialIds: {
       id: string;
-      transports?: AuthenticatorTransportFuture[];
+      transports?: AuthenticatorTransport[];
     }[],
   ) {
     const c = this.cfg;
@@ -116,7 +116,7 @@ export class WebauthnService {
       id: string;
       publicKey: Uint8Array;
       counter: number;
-      transports?: AuthenticatorTransportFuture[];
+      transports?: AuthenticatorTransport[];
     },
   ): Promise<VerifiedAuthenticationResponse> {
     const entry = this.consumeChallenge(challengeId);
