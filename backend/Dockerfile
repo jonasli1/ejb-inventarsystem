@@ -7,7 +7,12 @@ COPY prisma ./prisma
 # fallback) is inconsistent across host platforms, so a lockfile generated on
 # macOS can fail npm ci's strict validation inside a Linux container even
 # though the actual dependency versions are unaffected.
-RUN npm install
+# `--legacy-peer-deps`: @nestjs/throttler@6.5.0 (the latest release) still
+# declares a peer range of @nestjs/common/core ^7-^11, not yet updated for
+# NestJS 12; the actual runtime behavior is unaffected (verified against a
+# live server - rate-limit headers/guard behavior work correctly), this is
+# just the published peerDependencies metadata lagging the ecosystem bump.
+RUN npm install --legacy-peer-deps
 COPY . .
 RUN npx prisma generate
 RUN npm run build
@@ -15,7 +20,7 @@ RUN npm run build
 # re-running `npm ci --omit=dev` in the runtime stage: a second independent
 # resolution can hit npm's known flakiness around optional platform-specific
 # packages (e.g. @emnapi/*), which don't affect a plain prune.
-RUN npm prune --omit=dev
+RUN npm prune --omit=dev --legacy-peer-deps
 
 FROM node:20-alpine AS runtime
 WORKDIR /app
