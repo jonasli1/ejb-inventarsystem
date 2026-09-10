@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import * as Joi from 'joi';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -36,11 +37,22 @@ import { AppService } from './app.service';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
-      validationSchema: envValidationSchema,
-      validationOptions: { abortEarly: false },
+      validate: (config: Record<string, unknown>) => {
+        const result: Joi.ValidationResult = envValidationSchema.validate(
+          config,
+          {
+            abortEarly: false,
+            allowUnknown: true,
+          },
+        );
+        if (result.error)
+          throw new Error(`Config validation error: ${result.error.message}`);
+        return result.value as Record<string, unknown>;
+      },
     }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRootAsync({
+      imports: [],
       useFactory: () => ({
         throttlers: [
           {
@@ -48,7 +60,8 @@ import { AppService } from './app.service';
             limit: parseInt(process.env.THROTTLE_LIMIT ?? '20', 10),
           },
         ],
-        errorMessage: 'Zu viele Anfragen. Bitte versuchen Sie es in Kürze erneut.',
+        errorMessage:
+          'Zu viele Anfragen. Bitte versuchen Sie es in Kürze erneut.',
       }),
     }),
     PrismaModule,
