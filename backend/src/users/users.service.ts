@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { AuthProvider, GroupSource, RoleAssignSource } from '@prisma/client';
+import {
+  AuthProvider,
+  GroupSource,
+  RoleAssignSource,
+} from '../generated/prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import {

@@ -1,4 +1,4 @@
-import { InventoryStatus } from '@prisma/client';
+import { InventoryStatus } from '../generated/prisma/client';
 import { AppBadRequestException } from '../common/exceptions/app.exception';
 import { INVENTORY_STATUS_LABEL } from '../common/constants/labels';
 

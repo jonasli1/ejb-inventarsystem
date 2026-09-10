@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AttachmentCategory, AttachmentEntityType } from '@prisma/client';
+import {
+  AttachmentCategory,
+  AttachmentEntityType,
+} from '../generated/prisma/client';
 import sharp from 'sharp';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs/promises';
@@ -151,8 +154,7 @@ export class AttachmentsService {
         select: { id: true },
       }));
     }
-    if (!exists)
-      throw new AppNotFoundException('Zielobjekt nicht gefunden.');
+    if (!exists) throw new AppNotFoundException('Zielobjekt nicht gefunden.');
   }
 
   /** Attaches thumbnailUrl/mediumUrl (image categories only) + origin: 'own' to a raw attachment row for API responses - never the binary itself. */
@@ -379,7 +381,8 @@ export class AttachmentsService {
     }
     return {
       absolutePath,
-      mimeType: key === attachment.storageKey ? attachment.mimeType : 'image/jpeg',
+      mimeType:
+        key === attachment.storageKey ? attachment.mimeType : 'image/jpeg',
       fileName: attachment.fileName,
     };
   }

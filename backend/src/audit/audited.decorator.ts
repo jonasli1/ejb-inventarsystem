@@ -1,5 +1,5 @@
 import { SetMetadata } from '@nestjs/common';
-import { AuditAction, AuditCategory } from '@prisma/client';
+import { AuditAction, AuditCategory } from '../generated/prisma/client';
 import type { AuditEntityType } from './audit.service';
 
 export const AUDITED_KEY = 'audited';

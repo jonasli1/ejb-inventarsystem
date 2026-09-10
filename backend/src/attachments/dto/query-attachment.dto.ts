@@ -1,5 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AttachmentCategory, AttachmentEntityType } from '@prisma/client';
+import {
+  AttachmentCategory,
+  AttachmentEntityType,
+} from '../../generated/prisma/client';
 import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class QueryAttachmentDto {

@@ -81,51 +81,60 @@ ON CONFLICT ("key") DO NOTHING;
 -- 4. Expand grouped old permissions into their new equivalents for every
 --    role that held them, then drop the old rows (cascades the now-
 --    redundant role_permissions rows for them).
+--
+-- NOTE: this used to stage the old_key/new_key mapping in a
+-- "CREATE TEMPORARY TABLE ... ON COMMIT DROP" populated by a separate
+-- INSERT. Prisma 7's migration engine no longer runs an entire
+-- migration.sql inside one transaction (each statement can commit
+-- independently), so the temp table was gone by the time the next
+-- statement ran ("relation _permission_expansion does not exist").
+-- Replaced with a statement-local CTE repeated in both statements below -
+-- functionally identical, immune to that engine behavior.
 -- ---------------------------------------------------------------------------
-CREATE TEMPORARY TABLE "_permission_expansion" ("old_key" TEXT, "new_key" TEXT) ON COMMIT DROP;
-INSERT INTO "_permission_expansion" ("old_key", "new_key") VALUES
-  ('users.manage', 'users.read'),
-  ('users.manage', 'users.create'),
-  ('users.manage', 'users.update'),
-  ('users.manage', 'users.delete'),
+WITH "_permission_expansion" ("old_key", "new_key") AS (
+  VALUES
+    ('users.manage', 'users.read'),
+    ('users.manage', 'users.create'),
+    ('users.manage', 'users.update'),
+    ('users.manage', 'users.delete'),
 
-  ('roles.manage', 'roles.read'),
-  ('roles.manage', 'roles.create'),
-  ('roles.manage', 'roles.update'),
-  ('roles.manage', 'roles.delete'),
+    ('roles.manage', 'roles.read'),
+    ('roles.manage', 'roles.create'),
+    ('roles.manage', 'roles.update'),
+    ('roles.manage', 'roles.delete'),
 
-  ('groups.manage', 'groups.read'),
-  ('groups.manage', 'groups.create'),
-  ('groups.manage', 'groups.update'),
-  ('groups.manage', 'groups.delete'),
+    ('groups.manage', 'groups.read'),
+    ('groups.manage', 'groups.create'),
+    ('groups.manage', 'groups.update'),
+    ('groups.manage', 'groups.delete'),
 
-  ('organizations.manage', 'organizations.create'),
-  ('organizations.manage', 'organizations.update'),
-  ('organizations.manage', 'organizations.delete'),
+    ('organizations.manage', 'organizations.create'),
+    ('organizations.manage', 'organizations.update'),
+    ('organizations.manage', 'organizations.delete'),
 
-  ('articles.manage', 'articles.create'),
-  ('articles.manage', 'articles.update'),
-  ('articles.manage', 'articles.delete'),
+    ('articles.manage', 'articles.create'),
+    ('articles.manage', 'articles.update'),
+    ('articles.manage', 'articles.delete'),
 
-  -- old inventory.manage covered create/update/delete/retire together (the
-  -- retire/change-inventory-number split is new granularity, not something
-  -- inventory.manage holders previously lacked).
-  ('inventory.manage', 'inventory.create'),
-  ('inventory.manage', 'inventory.update'),
-  ('inventory.manage', 'inventory.delete'),
-  ('inventory.manage', 'inventory.retire'),
+    -- old inventory.manage covered create/update/delete/retire together (the
+    -- retire/change-inventory-number split is new granularity, not something
+    -- inventory.manage holders previously lacked).
+    ('inventory.manage', 'inventory.create'),
+    ('inventory.manage', 'inventory.update'),
+    ('inventory.manage', 'inventory.delete'),
+    ('inventory.manage', 'inventory.retire'),
 
-  -- old inventory.view was the single shared read-gate for inventory items,
-  -- articles, organizations/units, locations/rooms and categories alike.
-  ('inventory.view', 'inventory.read'),
-  ('inventory.view', 'articles.read'),
-  ('inventory.view', 'organizations.read'),
-  ('inventory.view', 'locations.read'),
+    -- old inventory.view was the single shared read-gate for inventory items,
+    -- articles, organizations/units, locations/rooms and categories alike.
+    ('inventory.view', 'inventory.read'),
+    ('inventory.view', 'articles.read'),
+    ('inventory.view', 'organizations.read'),
+    ('inventory.view', 'locations.read'),
 
-  ('locations.manage', 'locations.create'),
-  ('locations.manage', 'locations.update'),
-  ('locations.manage', 'locations.delete');
-
+    ('locations.manage', 'locations.create'),
+    ('locations.manage', 'locations.update'),
+    ('locations.manage', 'locations.delete')
+)
 INSERT INTO "role_permissions" ("role_id", "permission_id", "created_at")
 SELECT DISTINCT rp."role_id", p_new."id", now()
 FROM "role_permissions" rp
@@ -134,6 +143,45 @@ JOIN "_permission_expansion" m ON m."old_key" = p_old."key"
 JOIN "permissions" p_new ON p_new."key" = m."new_key"
 ON CONFLICT ("role_id", "permission_id") DO NOTHING;
 
+WITH "_permission_expansion" ("old_key", "new_key") AS (
+  VALUES
+    ('users.manage', 'users.read'),
+    ('users.manage', 'users.create'),
+    ('users.manage', 'users.update'),
+    ('users.manage', 'users.delete'),
+
+    ('roles.manage', 'roles.read'),
+    ('roles.manage', 'roles.create'),
+    ('roles.manage', 'roles.update'),
+    ('roles.manage', 'roles.delete'),
+
+    ('groups.manage', 'groups.read'),
+    ('groups.manage', 'groups.create'),
+    ('groups.manage', 'groups.update'),
+    ('groups.manage', 'groups.delete'),
+
+    ('organizations.manage', 'organizations.create'),
+    ('organizations.manage', 'organizations.update'),
+    ('organizations.manage', 'organizations.delete'),
+
+    ('articles.manage', 'articles.create'),
+    ('articles.manage', 'articles.update'),
+    ('articles.manage', 'articles.delete'),
+
+    ('inventory.manage', 'inventory.create'),
+    ('inventory.manage', 'inventory.update'),
+    ('inventory.manage', 'inventory.delete'),
+    ('inventory.manage', 'inventory.retire'),
+
+    ('inventory.view', 'inventory.read'),
+    ('inventory.view', 'articles.read'),
+    ('inventory.view', 'organizations.read'),
+    ('inventory.view', 'locations.read'),
+
+    ('locations.manage', 'locations.create'),
+    ('locations.manage', 'locations.update'),
+    ('locations.manage', 'locations.delete')
+)
 DELETE FROM "permissions" WHERE "key" IN (SELECT DISTINCT "old_key" FROM "_permission_expansion");
 
 -- ---------------------------------------------------------------------------

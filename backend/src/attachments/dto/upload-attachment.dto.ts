@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { AttachmentCategory } from '@prisma/client';
+import { AttachmentCategory } from '../../generated/prisma/client';
 import { IsEnum } from 'class-validator';
 
 export class UploadAttachmentDto {

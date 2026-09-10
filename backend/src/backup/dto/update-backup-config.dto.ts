@@ -1,5 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { BackupDestinationType, BackupFrequency } from '@prisma/client';
+import {
+  BackupDestinationType,
+  BackupFrequency,
+} from '../../generated/prisma/client';
 import {
   IsBoolean,
   IsEnum,

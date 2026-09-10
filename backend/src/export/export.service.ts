@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppNotFoundException } from '../common/exceptions/app.exception';
 import ExcelJS from 'exceljs';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { renderPdf, type PdfColumn, type PdfSection } from './pdf-table';
 import {

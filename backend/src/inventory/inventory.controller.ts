@@ -20,7 +20,7 @@ import {
   RequireAnyPermission,
   RequirePermissions,
 } from '../common/decorators/permissions.decorator';
-import { AuditAction } from '@prisma/client';
+import { AuditAction } from '../generated/prisma/client';
 import { PERMISSIONS } from '../common/constants/permissions';
 import { Audited } from '../audit/audited.decorator';
 import { InventoryService } from './inventory.service';

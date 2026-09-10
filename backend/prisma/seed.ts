@@ -1,9 +1,10 @@
 import 'dotenv/config';
-import { GroupSource, PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { GroupSource, PrismaClient } from '../src/generated/prisma/client';
 import * as argon2 from 'argon2';
 import { ALL_PERMISSIONS } from '../src/common/constants/permissions';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter: new PrismaPg(process.env.DATABASE_URL!) });
 
 const ROLE_DEFINITIONS: { name: string; description: string; permissionKeys: string[] }[] = [
   {

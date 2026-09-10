@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { StockMovementType } from '@prisma/client';
+import { StockMovementType } from '../../generated/prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsDateString,

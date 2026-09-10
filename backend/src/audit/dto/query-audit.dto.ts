@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { AuditCategory } from '@prisma/client';
+import { AuditCategory } from '../../generated/prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsDateString,

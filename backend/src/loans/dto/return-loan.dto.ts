@@ -9,7 +9,7 @@ import {
   IsUUID,
   ValidateNested,
 } from 'class-validator';
-import { InventoryStatus } from '@prisma/client';
+import { InventoryStatus } from '../../generated/prisma/client';
 
 // A returned item can only land in one of these states - never back into
 // "installed" (that's not a loan-return outcome) and never "borrowed"

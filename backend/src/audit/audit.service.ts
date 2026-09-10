@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AuditAction, AuditCategory, Prisma } from '@prisma/client';
+import { AuditAction, AuditCategory, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   decodeCursor,

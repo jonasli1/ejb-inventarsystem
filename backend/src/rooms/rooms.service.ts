@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppNotFoundException } from '../common/exceptions/app.exception';
 import { CreateRoomDto } from './dto/create-room.dto';

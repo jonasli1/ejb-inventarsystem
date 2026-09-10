@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { InventoryStatus } from '@prisma/client';
+import { InventoryStatus } from '../../generated/prisma/client';
 import {
   IsBoolean,
   IsEnum,

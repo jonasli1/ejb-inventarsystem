@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { LoanStatus } from '@prisma/client';
+import { LoanStatus } from '../../generated/prisma/client';
 import { IsEnum, IsOptional, IsUUID } from 'class-validator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 

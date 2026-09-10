@@ -6,7 +6,7 @@ import {
   GroupSource,
   ThemePreference,
   type User,
-} from '@prisma/client';
+} from '../generated/prisma/client';
 import * as argon2 from 'argon2';
 import * as crypto from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';

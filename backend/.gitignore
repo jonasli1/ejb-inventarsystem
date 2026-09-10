@@ -21,7 +21,7 @@ yarn-error.log
 .env.*.local
 
 # generated Prisma client (kept out of VCS; regenerated via `prisma generate`)
-/generated/prisma
+/src/generated/prisma
 
 # uploaded file attachments (persisted via a Docker volume in production)
 /uploads

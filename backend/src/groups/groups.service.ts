@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RoleAssignSource } from '@prisma/client';
+import { RoleAssignSource } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   paginate,

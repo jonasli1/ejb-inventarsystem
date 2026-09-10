@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ThemePreference } from '@prisma/client';
+import { ThemePreference } from '../../generated/prisma/client';
 import { IsEnum } from 'class-validator';
 
 export class UpdateThemeDto {

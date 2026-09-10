@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { InventoryStatus, Prisma, StockMovementType } from '@prisma/client';
+import {
+  InventoryStatus,
+  Prisma,
+  StockMovementType,
+} from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { paginate } from '../common/dto/pagination-query.dto';
@@ -557,11 +561,14 @@ export class InventoryService {
       where: { id: itemId, deletedAt: null },
       select: { id: true, parentItemId: true },
     });
-    if (!parent) throw new AppNotFoundException('Inventarobjekt nicht gefunden.');
+    if (!parent)
+      throw new AppNotFoundException('Inventarobjekt nicht gefunden.');
 
     const candidate = await this.prisma.inventoryItem.findFirst({
       where: { id: accessoryItemId, deletedAt: null },
-      include: { accessories: { where: { deletedAt: null }, select: { id: true } } },
+      include: {
+        accessories: { where: { deletedAt: null }, select: { id: true } },
+      },
     });
     if (!candidate) {
       throw new AppNotFoundException(

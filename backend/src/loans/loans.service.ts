@@ -6,7 +6,7 @@ import {
   LoanStatus,
   Prisma,
   StockMovementType,
-} from '@prisma/client';
+} from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate } from '../common/dto/pagination-query.dto';
 import { AuditService } from '../audit/audit.service';

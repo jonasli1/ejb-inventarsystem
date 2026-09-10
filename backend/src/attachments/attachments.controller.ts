@@ -17,7 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { AttachmentEntityType } from '@prisma/client';
+import { AttachmentEntityType } from '../generated/prisma/client';
 import { createReadStream } from 'node:fs';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
