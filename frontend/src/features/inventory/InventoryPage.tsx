@@ -7,7 +7,6 @@ import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import type { CursorResult, GroupedInventoryEntry, InventoryItem, InventoryStatus, PaginatedResult } from '@/lib/api-types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
-import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { INVENTORY_STATUS_LABEL } from '@/lib/status-labels';
@@ -48,7 +47,6 @@ export function InventoryPage() {
   const canCreate = hasPermission(PERMISSIONS.INVENTORY_CREATE);
   const canExport = hasPermission(PERMISSIONS.REPORTS_VIEW);
 
-  const [exportGroupBy, setExportGroupBy] = useState<'' | 'owner' | 'location'>('');
   const [grouped, setGrouped] = useState(false);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
@@ -195,37 +193,12 @@ export function InventoryPage() {
         title="Inventar"
         description="Bestand nach Standort, Raum, Status, Kategorie und Eigentümer durchsuchen."
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {canExport && (
-              <>
-                <div className="w-52">
-                  <Select
-                    value={exportGroupBy}
-                    onChange={(e) => setExportGroupBy(e.target.value as '' | 'owner' | 'location')}
-                  >
-                    <option value="">Export: keine Gruppierung</option>
-                    <option value="owner">Export: nach Eigentümer</option>
-                    <option value="location">Export: nach Standort</option>
-                  </Select>
-                </div>
-                <ExportButtons
-                  onExport={(fmt) =>
-                    downloadExport(
-                      '/export/inventory',
-                      { format: fmt, groupBy: exportGroupBy || undefined },
-                      `Inventar.${fmt}`,
-                    )
-                  }
-                />
-              </>
-            )}
-            {canCreate && (
-              <Button onClick={() => setCreateOpen(true)}>
-                <Plus size={16} />
-                Neues Objekt
-              </Button>
-            )}
-          </div>
+          canCreate && (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus size={16} />
+              Neues Objekt
+            </Button>
+          )
         }
       />
 
@@ -305,31 +278,40 @@ export function InventoryPage() {
               </Button>
             )}
 
-            <div className="ml-auto flex gap-1 rounded-lg border border-border p-0.5">
-              <button
-                onClick={() => {
-                  setGrouped(false);
-                  setPage(1);
-                }}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium ${
-                  !grouped ? 'bg-brand-50 text-brand-700' : 'text-muted'
-                }`}
-              >
-                <ListIcon size={15} />
-                Einzeln
-              </button>
-              <button
-                onClick={() => {
-                  setGrouped(true);
-                  setPage(1);
-                }}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium ${
-                  grouped ? 'bg-brand-50 text-brand-700' : 'text-muted'
-                }`}
-              >
-                <LayoutGrid size={15} />
-                Gruppiert
-              </button>
+            <div className="ml-auto flex items-center gap-2">
+              {canExport && (
+                <ExportButtons
+                  onExport={(fmt) =>
+                    downloadExport('/export/inventory', { ...commonFilters, format: fmt }, `Inventar.${fmt}`)
+                  }
+                />
+              )}
+              <div className="flex gap-1 rounded-lg border border-border p-0.5">
+                <button
+                  onClick={() => {
+                    setGrouped(false);
+                    setPage(1);
+                  }}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium ${
+                    !grouped ? 'bg-brand-50 text-brand-700' : 'text-muted'
+                  }`}
+                >
+                  <ListIcon size={15} />
+                  Einzeln
+                </button>
+                <button
+                  onClick={() => {
+                    setGrouped(true);
+                    setPage(1);
+                  }}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium ${
+                    grouped ? 'bg-brand-50 text-brand-700' : 'text-muted'
+                  }`}
+                >
+                  <LayoutGrid size={15} />
+                  Gruppiert
+                </button>
+              </div>
             </div>
           </div>
         </div>

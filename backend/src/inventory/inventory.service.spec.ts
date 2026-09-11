@@ -221,11 +221,11 @@ describe('InventoryService', () => {
       });
     });
 
-    it('orders the flat list by (createdAt, id) for stable keyset pagination', async () => {
+    it('orders the flat list by (inventoryNumber, id) for stable, naturally-sorted keyset pagination', async () => {
       await service.findAll({});
       expect(prisma.inventoryItem.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          orderBy: [{ inventoryNumber: 'asc' }, { id: 'asc' }],
         }),
       );
     });
@@ -259,9 +259,9 @@ describe('InventoryService', () => {
       expect(result.nextCursor).toBeNull();
     });
 
-    it('translates a cursor into an (createdAt, id) keyset filter, AND-composed with other filters', async () => {
+    it('translates a non-null-inventoryNumber cursor into a keyset filter that also includes null-inventoryNumber rows (NULLS LAST), AND-composed with other filters', async () => {
       const cursor = Buffer.from(
-        JSON.stringify({ createdAt: '2026-01-01T00:00:00.000Z', id: 'item-5' }),
+        JSON.stringify({ inventoryNumber: 'Adam-8', id: 'item-5' }),
       ).toString('base64url');
 
       await service.findAll({ cursor, status: 'available' });
@@ -269,12 +269,24 @@ describe('InventoryService', () => {
       const call = prisma.inventoryItem.findMany.mock.calls[0][0];
       expect(call.where.status).toBe('available');
       expect(call.where.AND[0].OR).toEqual([
-        { createdAt: { gt: new Date('2026-01-01T00:00:00.000Z') } },
-        {
-          createdAt: new Date('2026-01-01T00:00:00.000Z'),
-          id: { gt: 'item-5' },
-        },
+        { inventoryNumber: { gt: 'Adam-8' } },
+        { inventoryNumber: 'Adam-8', id: { gt: 'item-5' } },
+        { inventoryNumber: null },
       ]);
+    });
+
+    it('translates a null-inventoryNumber cursor into a filter for only further null-inventoryNumber rows', async () => {
+      const cursor = Buffer.from(
+        JSON.stringify({ inventoryNumber: null, id: 'item-5' }),
+      ).toString('base64url');
+
+      await service.findAll({ cursor });
+
+      const call = prisma.inventoryItem.findMany.mock.calls[0][0];
+      expect(call.where.AND[0]).toEqual({
+        inventoryNumber: null,
+        id: { gt: 'item-5' },
+      });
     });
   });
 

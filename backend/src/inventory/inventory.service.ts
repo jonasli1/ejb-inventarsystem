@@ -66,11 +66,22 @@ export class InventoryService {
     private readonly attachments: AttachmentsService,
   ) {}
 
-  async findAll(query: QueryInventoryItemDto) {
-    // Search contributes its own `OR` clause; combined with the cursor's
-    // `OR` (added below for the flat/keyset path) via `AND` so the two
-    // don't clobber each other - both can be a mix-in only Prisma's `where`
-    // supports one `OR` key per level.
+  /** Shared by findAll (list) and ExportService (Excel/PDF) - export must match exactly what the list's current filters/search show. */
+  async buildWhere(
+    query: Pick<
+      QueryInventoryItemDto,
+      | 'search'
+      | 'articleId'
+      | 'categoryId'
+      | 'locationId'
+      | 'roomId'
+      | 'status'
+      | 'ownerOrganizationId'
+      | 'ownerUnitId'
+    >,
+  ): Promise<Prisma.InventoryItemWhereInput> {
+    // Search contributes its own `OR` clause; combined with any other `AND`
+    // conditions since Prisma's `where` supports only one `OR` key per level.
     const andConditions: Prisma.InventoryItemWhereInput[] = [];
     if (query.search) {
       andConditions.push(await this.buildSearchWhere(query.search));
@@ -90,9 +101,14 @@ export class InventoryService {
         : {}),
       ...(query.ownerUnitId ? { ownerUnitId: query.ownerUnitId } : {}),
     };
+    if (andConditions.length) where.AND = andConditions;
+    return where;
+  }
+
+  async findAll(query: QueryInventoryItemDto) {
+    const where = await this.buildWhere(query);
 
     if (query.grouped) {
-      if (andConditions.length) where.AND = andConditions;
       const page = query.page ?? 1;
       const pageSize = query.pageSize ?? 20;
       return this.findAllGrouped(where, page, pageSize);
@@ -101,35 +117,49 @@ export class InventoryService {
     // Flat list: keyset/cursor pagination, not OFFSET - this is the
     // resource expected to grow past 1M rows, where `skip: N` degrades
     // linearly with N (Postgres still has to walk & discard N rows).
-    // Ordered by (createdAt, id) for a stable, always-populated,
-    // effectively-unique sort key; arbitrary sortBy/sortOrder (still
-    // honored for the small, offset-paginated `grouped` view above) isn't
-    // supported here - keyset pagination on a caller-chosen column would
-    // need per-column cursor comparison logic, out of proportion to what's
-    // actually needed at this scale.
+    // Ordered by (inventoryNumber, id) - inventoryNumber's column collation
+    // is a custom ICU "natural sort" one (see its migration), so this sorts
+    // numeric runs within the string by value (Adam-5, Adam-8, Adam-10, ...)
+    // rather than lexicographically. inventoryNumber is nullable and
+    // Postgres puts NULLs last for ASC by default, so the keyset predicate
+    // below mirrors that explicitly: once past a non-null cursor value,
+    // NULL rows (sorting after every non-null value) are included too; once
+    // the cursor's own value is null, only further null rows (by id) remain.
     const limit = query.limit ?? 50;
+    const andConditions: Prisma.InventoryItemWhereInput[] = where.AND
+      ? [where.AND].flat()
+      : [];
     if (query.cursor) {
-      const cursor = decodeCursor<{ createdAt: string; id: string }>(
-        query.cursor,
+      const cursor = decodeCursor<{
+        inventoryNumber: string | null;
+        id: string;
+      }>(query.cursor);
+      andConditions.push(
+        cursor.inventoryNumber === null
+          ? { inventoryNumber: null, id: { gt: cursor.id } }
+          : {
+              OR: [
+                { inventoryNumber: { gt: cursor.inventoryNumber } },
+                {
+                  inventoryNumber: cursor.inventoryNumber,
+                  id: { gt: cursor.id },
+                },
+                { inventoryNumber: null },
+              ],
+            },
       );
-      andConditions.push({
-        OR: [
-          { createdAt: { gt: new Date(cursor.createdAt) } },
-          { createdAt: new Date(cursor.createdAt), id: { gt: cursor.id } },
-        ],
-      });
     }
     if (andConditions.length) where.AND = andConditions;
 
     const rows = await this.prisma.inventoryItem.findMany({
       where,
       include: INVENTORY_ITEM_INCLUDE,
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      orderBy: [{ inventoryNumber: 'asc' }, { id: 'asc' }],
       take: limit + 1,
     });
 
     return paginateByCursor(rows, limit, (row) => ({
-      createdAt: row.createdAt.toISOString(),
+      inventoryNumber: row.inventoryNumber,
       id: row.id,
     }));
   }

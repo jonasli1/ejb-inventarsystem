@@ -1629,18 +1629,27 @@ describe('Inventarsystem API (e2e)', () => {
       expect(pdf.headers['content-type']).toBe('application/pdf');
     });
 
-    it('exports the inventory list grouped by owner or location', async () => {
-      const byOwner = await request(app.getHttpServer())
-        .get('/api/v1/export/inventory?format=xlsx&groupBy=owner')
+    it('exports the inventory list as xlsx and pdf, applying the same filters the list itself would use', async () => {
+      const xlsx = await request(app.getHttpServer())
+        .get('/api/v1/export/inventory?format=xlsx')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
-      expect(byOwner.headers['content-type']).toContain('spreadsheetml');
+      expect(xlsx.headers['content-type']).toContain('spreadsheetml');
 
-      const byLocation = await request(app.getHttpServer())
-        .get('/api/v1/export/inventory?format=pdf&groupBy=location')
+      const pdf = await request(app.getHttpServer())
+        .get('/api/v1/export/inventory?format=pdf')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
-      expect(byLocation.headers['content-type']).toBe('application/pdf');
+      expect(pdf.headers['content-type']).toBe('application/pdf');
+
+      // Filters (status, search, ...) - the same fields the list endpoint
+      // accepts - narrow the export too; a filter matching nothing is still
+      // a valid (empty) export, not an error.
+      const filtered = await request(app.getHttpServer())
+        .get('/api/v1/export/inventory?format=xlsx&status=defect')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(filtered.headers['content-type']).toContain('spreadsheetml');
     });
 
     it('exports a single inventory item with its activity history', async () => {

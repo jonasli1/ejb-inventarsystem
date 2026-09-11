@@ -95,57 +95,69 @@ export function ArticlesPage() {
 
       <Card className="mb-4">
         <div className="p-4">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="relative w-full min-w-[220px] max-w-sm">
-                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-                <Input
-                  className="pl-9"
-                  placeholder="Suche nach Name, Kosename, Hersteller, Kategorie …"
-                  role="searchbox"
-                  name="article-search"
-                  autoComplete="off"
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setPage(1);
-                  }}
+          <div className="relative">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <Input
+              className="pl-9"
+              placeholder="Suche nach Name, Kosename, Hersteller, Kategorie …"
+              role="searchbox"
+              name="article-search"
+              autoComplete="off"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="w-48">
+              <Select
+                value={categoryId}
+                onChange={(e) => {
+                  setCategoryId(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">Alle Kategorien</option>
+                {categories?.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {categoryId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCategoryId('');
+                  setPage(1);
+                }}
+                className="flex items-center gap-1 p-2 -m-2 text-xs font-medium text-muted hover:text-ink"
+              >
+                <X size={13} />
+                Kategorie zurücksetzen
+              </button>
+            )}
+
+            {canExport && (
+              <div className="ml-auto">
+                <ExportButtons
+                  onExport={(fmt) =>
+                    downloadExport(
+                      '/export/articles',
+                      {
+                        ...(categoryId ? { categoryId } : {}),
+                        ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
+                        format: fmt,
+                      },
+                      `Artikel.${fmt}`,
+                    )
+                  }
                 />
               </div>
-              <div className="w-48">
-                <Select
-                  value={categoryId}
-                  onChange={(e) => {
-                    setCategoryId(e.target.value);
-                    setPage(1);
-                  }}
-                >
-                  <option value="">Alle Kategorien</option>
-                  {categories?.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              {categoryId && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCategoryId('');
-                    setPage(1);
-                  }}
-                  className="flex items-center gap-1 p-2 -m-2 text-xs font-medium text-muted hover:text-ink"
-                >
-                  <X size={13} />
-                  Kategorie zurücksetzen
-                </button>
-              )}
-            </div>
-            {canExport && (
-              <ExportButtons
-                onExport={(fmt) => downloadExport('/export/articles', { format: fmt }, `Artikel.${fmt}`)}
-              />
             )}
           </div>
         </div>

@@ -3,7 +3,9 @@ import { AppNotFoundException } from '../common/exceptions/app.exception';
 import ExcelJS from 'exceljs';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { renderPdf, type PdfColumn, type PdfSection } from './pdf-table';
+import { InventoryService } from '../inventory/inventory.service';
+import { ArticlesService } from '../articles/articles.service';
+import { renderPdf, type PdfColumn } from './pdf-table';
 import {
   describeMovement,
   fmtDate,
@@ -13,7 +15,11 @@ import {
   LOAN_STATUS_LABEL,
   MOVEMENT_TYPE_LABEL,
 } from '../common/constants/labels';
-import type { ExportFormat } from './dto/export-query.dto';
+import type {
+  ExportFormat,
+  ExportInventoryQueryDto,
+  ExportArticlesQueryDto,
+} from './dto/export-query.dto';
 
 export interface ExportFile {
   buffer: Buffer;
@@ -49,7 +55,11 @@ function sheetName(name: string): string {
 
 @Injectable()
 export class ExportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly inventoryService: InventoryService,
+    private readonly articlesService: ArticlesService,
+  ) {}
 
   // -----------------------------------------------------------------------
   // Loan export
@@ -134,17 +144,19 @@ export class ExportService {
   }
 
   // -----------------------------------------------------------------------
-  // Inventory export (optionally grouped by owner or location)
+  // Inventory export - a single flat, naturally-sorted list matching
+  // exactly the given filters/search (same buildWhere as the list itself)
   // -----------------------------------------------------------------------
 
   async exportInventory(
-    groupBy: 'owner' | 'location' | undefined,
+    query: ExportInventoryQueryDto,
     format: ExportFormat,
   ): Promise<ExportFile> {
+    const where = await this.inventoryService.buildWhere(query);
     const items = await this.prisma.inventoryItem.findMany({
-      where: { deletedAt: null },
+      where,
       include: INVENTORY_ITEM_EXPORT_INCLUDE,
-      orderBy: { inventoryNumber: 'asc' },
+      orderBy: [{ inventoryNumber: 'asc' }, { id: 'asc' }],
     });
 
     const columns: PdfColumn[] = [
@@ -173,67 +185,33 @@ export class ExportService {
       serialNumber: item.serialNumber ?? '',
     });
 
-    const groupLabel = (item: (typeof items)[number]) =>
-      groupBy === 'owner'
-        ? `${item.ownerOrganization.name} / ${item.ownerUnit.name}`
-        : groupBy === 'location'
-          ? `${item.location.name} / ${item.room.name}`
-          : 'Alle';
-
-    const groups = new Map<string, (typeof items)[number][]>();
-    for (const item of items) {
-      const key = groupLabel(item);
-      const bucket = groups.get(key) ?? [];
-      bucket.push(item);
-      groups.set(key, bucket);
-    }
-
-    const titleSuffix =
-      groupBy === 'owner'
-        ? ' nach Eigentümer'
-        : groupBy === 'location'
-          ? ' nach Standort'
-          : '';
-    const filename = `Inventar${titleSuffix ? '-' + slug(titleSuffix) : ''}`;
-
     if (format === 'pdf') {
-      const sections: PdfSection[] = [...groups.entries()].map(
-        ([label, groupItems]) => ({
-          title: groupBy ? label : undefined,
-          columns,
-          rows: groupItems.map(toRow),
-        }),
-      );
       const buffer = await renderPdf(
-        `Inventar${titleSuffix}`,
+        'Inventar',
         [{ label: 'Anzahl Objekte', value: String(items.length) }],
-        sections,
+        [{ columns, rows: items.map(toRow) }],
       );
       return {
         buffer,
-        filename: `${filename}.pdf`,
+        filename: 'Inventar.pdf',
         contentType: PDF_CONTENT_TYPE,
       };
     }
 
     const workbook = new ExcelJS.Workbook();
-    for (const [label, groupItems] of groups) {
-      const sheet = workbook.addWorksheet(
-        sheetName(groupBy ? label : 'Inventar'),
-      );
-      sheet.columns = columns.map((c) => ({
-        header: c.header,
-        key: c.key,
-        width: Math.round(c.width / 6),
-      }));
-      sheet.getRow(1).font = { bold: true };
-      groupItems.forEach((item) => sheet.addRow(toRow(item)));
-    }
+    const sheet = workbook.addWorksheet(sheetName('Inventar'));
+    sheet.columns = columns.map((c) => ({
+      header: c.header,
+      key: c.key,
+      width: Math.round(c.width / 6),
+    }));
+    sheet.getRow(1).font = { bold: true };
+    items.forEach((item) => sheet.addRow(toRow(item)));
 
     const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
     return {
       buffer,
-      filename: `${filename}.xlsx`,
+      filename: 'Inventar.xlsx',
       contentType: XLSX_CONTENT_TYPE,
     };
   }
@@ -341,18 +319,19 @@ export class ExportService {
   // -----------------------------------------------------------------------
 
   async exportArticles(
-    articleIds: string[] | undefined,
+    query: ExportArticlesQueryDto,
     format: ExportFormat,
   ): Promise<ExportFile> {
+    const where = await this.articlesService.buildWhere(query);
     const articles = await this.prisma.article.findMany({
       where: {
-        deletedAt: null,
-        ...(articleIds?.length ? { id: { in: articleIds } } : {}),
+        ...where,
+        ...(query.articleIds?.length ? { id: { in: query.articleIds } } : {}),
       },
       include: { category: true },
       orderBy: { name: 'asc' },
     });
-    if (articleIds?.length && articles.length === 0) {
+    if (query.articleIds?.length && articles.length === 0) {
       throw new AppNotFoundException('Keine passenden Artikel gefunden.');
     }
 

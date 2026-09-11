@@ -17,15 +17,22 @@ import { QueryArticleDto } from './dto/query-article.dto';
 export class ArticlesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: QueryArticleDto) {
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
-
-    const where: Prisma.ArticleWhereInput = {
+  /** Shared by findAll (list) and ExportService (Excel/PDF) - export must match exactly what the list's current filters/search show. */
+  async buildWhere(
+    query: Pick<QueryArticleDto, 'categoryId' | 'search'>,
+  ): Promise<Prisma.ArticleWhereInput> {
+    return {
       deletedAt: null,
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
       ...(query.search ? await this.buildSearchWhere(query.search) : {}),
     };
+  }
+
+  async findAll(query: QueryArticleDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+
+    const where = await this.buildWhere(query);
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.article.findMany({

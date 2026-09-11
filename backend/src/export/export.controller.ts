@@ -45,7 +45,7 @@ export class ExportController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const file = await this.exportService.exportInventory(
-      query.groupBy,
+      query,
       query.format ?? 'xlsx',
     );
     return this.send(res, file);
@@ -72,7 +72,7 @@ export class ExportController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const file = await this.exportService.exportArticles(
-      query.articleIds,
+      query,
       query.format ?? 'xlsx',
     );
     return this.send(res, file);

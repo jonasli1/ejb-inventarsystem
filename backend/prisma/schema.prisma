@@ -489,6 +489,11 @@ model InventoryItem {
   @@index([ownerOrganizationId, ownerUnitId])
   @@index([status])
   @@index([parentItemId])
+  // Keyset-pagination sort key for the flat inventory list. inventoryNumber's
+  // column collation is switched to a custom natural-sort ICU collation by
+  // this index's own migration (see its NOTE) - Prisma doesn't model
+  // collations, so that part isn't visible here.
+  @@index([inventoryNumber, id])
   @@map("inventory_items")
 }
 
