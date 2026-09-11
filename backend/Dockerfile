@@ -33,10 +33,6 @@ COPY --from=build /app/dist ./dist
 COPY package*.json ./
 COPY tsconfig.json prisma.config.ts ./
 COPY prisma ./prisma
-# `prisma/seed.ts` imports straight from `src/` and is run via ts-node
-# (`npx prisma db seed`), not from the compiled dist output, so the
-# TypeScript sources need to be present at runtime too.
-COPY src ./src
 RUN mkdir -p /app/uploads /app/backup-tmp && chown -R node:node /app/uploads /app/backup-tmp
 USER node
 EXPOSE 3000

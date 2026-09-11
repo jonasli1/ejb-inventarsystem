@@ -1,12 +1,18 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { GroupSource, PrismaClient } from '../src/generated/prisma/client';
+import { GroupSource, PrismaClient } from '../generated/prisma/client';
 import * as argon2 from 'argon2';
-import { ALL_PERMISSIONS } from '../src/common/constants/permissions';
+import { ALL_PERMISSIONS } from '../common/constants/permissions';
 
-const prisma = new PrismaClient({ adapter: new PrismaPg(process.env.DATABASE_URL!) });
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(process.env.DATABASE_URL!),
+});
 
-const ROLE_DEFINITIONS: { name: string; description: string; permissionKeys: string[] }[] = [
+const ROLE_DEFINITIONS: {
+  name: string;
+  description: string;
+  permissionKeys: string[];
+}[] = [
   {
     name: 'Admin',
     description: 'Full system access',
@@ -14,7 +20,8 @@ const ROLE_DEFINITIONS: { name: string; description: string; permissionKeys: str
   },
   {
     name: 'Lagerwart',
-    description: 'Manages inventory, locations, articles and loans (own organization)',
+    description:
+      'Manages inventory, locations, articles and loans (own organization)',
     permissionKeys: [
       'inventory.read',
       'inventory.create',
@@ -103,13 +110,17 @@ async function main() {
       const permission = permissionByKey.get(key);
       if (!permission) continue;
       await prisma.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
+        where: {
+          roleId_permissionId: { roleId: role.id, permissionId: permission.id },
+        },
         update: {},
         create: { roleId: role.id, permissionId: permission.id },
       });
     }
   }
-  const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: 'Admin' } });
+  const adminRole = await prisma.role.findUniqueOrThrow({
+    where: { name: 'Admin' },
+  });
 
   console.log('Seeding organizations...');
   const orgA = await prisma.organization.upsert({
@@ -124,35 +135,60 @@ async function main() {
   });
 
   const unitTechnik = await prisma.organizationUnit.upsert({
-    where: { organizationId_name: { organizationId: orgA.id, name: 'Technik-Team' } },
+    where: {
+      organizationId_name: { organizationId: orgA.id, name: 'Technik-Team' },
+    },
     update: {},
     create: { organizationId: orgA.id, name: 'Technik-Team' },
   });
   const unitJugend = await prisma.organizationUnit.upsert({
-    where: { organizationId_name: { organizationId: orgB.id, name: 'Jugendarbeit' } },
+    where: {
+      organizationId_name: { organizationId: orgB.id, name: 'Jugendarbeit' },
+    },
     update: {},
     create: { organizationId: orgB.id, name: 'Jugendarbeit' },
   });
 
   console.log('Seeding locations & rooms...');
   const gemeindehaus = await prisma.location.upsert({
-    where: { id: (await prisma.location.findFirst({ where: { name: 'Gemeindehaus' } }))?.id ?? '' },
+    where: {
+      id:
+        (await prisma.location.findFirst({ where: { name: 'Gemeindehaus' } }))
+          ?.id ?? '',
+    },
     update: {},
-    create: { name: 'Gemeindehaus', address: 'Hauptstraße 1, 12345 Musterstadt' },
+    create: {
+      name: 'Gemeindehaus',
+      address: 'Hauptstraße 1, 12345 Musterstadt',
+    },
   });
   const aussenlager = await prisma.location.upsert({
-    where: { id: (await prisma.location.findFirst({ where: { name: 'Außenlager Nord' } }))?.id ?? '' },
+    where: {
+      id:
+        (
+          await prisma.location.findFirst({
+            where: { name: 'Außenlager Nord' },
+          })
+        )?.id ?? '',
+    },
     update: {},
-    create: { name: 'Außenlager Nord', address: 'Nordring 5, 12345 Musterstadt' },
+    create: {
+      name: 'Außenlager Nord',
+      address: 'Nordring 5, 12345 Musterstadt',
+    },
   });
 
   const technikraum = await prisma.room.upsert({
-    where: { locationId_name: { locationId: gemeindehaus.id, name: 'Technikraum' } },
+    where: {
+      locationId_name: { locationId: gemeindehaus.id, name: 'Technikraum' },
+    },
     update: {},
     create: { locationId: gemeindehaus.id, name: 'Technikraum' },
   });
   const lager1 = await prisma.room.upsert({
-    where: { locationId_name: { locationId: gemeindehaus.id, name: 'Lager 1' } },
+    where: {
+      locationId_name: { locationId: gemeindehaus.id, name: 'Lager 1' },
+    },
     update: {},
     create: { locationId: gemeindehaus.id, name: 'Lager 1' },
   });
@@ -164,7 +200,11 @@ async function main() {
 
   console.log('Seeding categories & articles...');
   const categoryTechnik = await prisma.category.upsert({
-    where: { id: (await prisma.category.findFirst({ where: { name: 'Technik' } }))?.id ?? '' },
+    where: {
+      id:
+        (await prisma.category.findFirst({ where: { name: 'Technik' } }))?.id ??
+        '',
+    },
     update: {},
     create: { name: 'Technik' },
   });
@@ -172,19 +212,34 @@ async function main() {
   // Object types (UNIQUE/BULK/CONSUMABLE) no longer exist - every article's
   // units behave the same way, one InventoryItem row per physical unit.
   const mischpult = await prisma.article.upsert({
-    where: { id: (await prisma.article.findFirst({ where: { name: 'Mischpult Behringer X32' } }))?.id ?? '' },
+    where: {
+      id:
+        (
+          await prisma.article.findFirst({
+            where: { name: 'Mischpult Behringer X32' },
+          })
+        )?.id ?? '',
+    },
     update: {},
     create: {
       name: 'Mischpult Behringer X32',
       description: 'Digitales 32-Kanal Mischpult',
-      notes: 'Jährliche Kalibrierung durch den Technikbeauftragten erforderlich.',
+      notes:
+        'Jährliche Kalibrierung durch den Technikbeauftragten erforderlich.',
       aliases: ['X32', 'Mischer', 'Behringer'],
       categoryId: categoryTechnik.id,
       manufacturer: 'Behringer',
     },
   });
   const netzkabel = await prisma.article.upsert({
-    where: { id: (await prisma.article.findFirst({ where: { name: 'Netzkabel (Kaltgeräte)' } }))?.id ?? '' },
+    where: {
+      id:
+        (
+          await prisma.article.findFirst({
+            where: { name: 'Netzkabel (Kaltgeräte)' },
+          })
+        )?.id ?? '',
+    },
     update: {},
     create: {
       name: 'Netzkabel (Kaltgeräte)',
@@ -195,7 +250,11 @@ async function main() {
     },
   });
   const stromkabel = await prisma.article.upsert({
-    where: { id: (await prisma.article.findFirst({ where: { name: 'Stromkabel 5m' } }))?.id ?? '' },
+    where: {
+      id:
+        (await prisma.article.findFirst({ where: { name: 'Stromkabel 5m' } }))
+          ?.id ?? '',
+    },
     update: {},
     create: {
       name: 'Stromkabel 5m',
@@ -206,7 +265,14 @@ async function main() {
     },
   });
   const gaffaTape = await prisma.article.upsert({
-    where: { id: (await prisma.article.findFirst({ where: { name: 'Gaffa Tape Rolle' } }))?.id ?? '' },
+    where: {
+      id:
+        (
+          await prisma.article.findFirst({
+            where: { name: 'Gaffa Tape Rolle' },
+          })
+        )?.id ?? '',
+    },
     update: {},
     create: {
       name: 'Gaffa Tape Rolle',
@@ -311,12 +377,20 @@ async function main() {
 
   console.log('Seeding groups...');
   const groupVorstand = await prisma.group.upsert({
-    where: { id: (await prisma.group.findFirst({ where: { name: 'Vorstand' } }))?.id ?? '' },
+    where: {
+      id:
+        (await prisma.group.findFirst({ where: { name: 'Vorstand' } }))?.id ??
+        '',
+    },
     update: {},
     create: { name: 'Vorstand', description: 'Leitungsgremium' },
   });
   await prisma.group.upsert({
-    where: { id: (await prisma.group.findFirst({ where: { name: 'Technikteam' } }))?.id ?? '' },
+    where: {
+      id:
+        (await prisma.group.findFirst({ where: { name: 'Technikteam' } }))
+          ?.id ?? '',
+    },
     update: {},
     create: { name: 'Technikteam', description: 'Technik & Veranstaltungen' },
   });
@@ -326,7 +400,8 @@ async function main() {
     .trim()
     .toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD ?? 'ChangeMe123!';
-  const adminDisplayName = process.env.ADMIN_DISPLAY_NAME ?? 'System Administrator';
+  const adminDisplayName =
+    process.env.ADMIN_DISPLAY_NAME ?? 'System Administrator';
 
   const passwordHash = await argon2.hash(adminPassword);
 
@@ -353,9 +428,15 @@ async function main() {
   });
 
   await prisma.userGroup.upsert({
-    where: { userId_groupId: { userId: adminUser.id, groupId: groupVorstand.id } },
+    where: {
+      userId_groupId: { userId: adminUser.id, groupId: groupVorstand.id },
+    },
     update: {},
-    create: { userId: adminUser.id, groupId: groupVorstand.id, source: GroupSource.manual },
+    create: {
+      userId: adminUser.id,
+      groupId: groupVorstand.id,
+      source: GroupSource.manual,
+    },
   });
 
   console.log('Seed completed.');

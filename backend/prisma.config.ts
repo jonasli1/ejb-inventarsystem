@@ -7,7 +7,15 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
-    seed: "ts-node --transpile-only prisma/seed.ts",
+    // Runs the compiled dist/ output, not the TS source via ts-node: the
+    // generated Prisma client's own nodenext-style relative imports (e.g.
+    // "./enums.js") resolve correctly against real compiled .js siblings in
+    // dist/, but ts-node has no equivalent mapping back to the raw .ts
+    // sources, so it fails with "Cannot find module './internal/class.js'".
+    // Requires `npm run build` to have been run at least once first (always
+    // true in the deployed image; true in local dev whenever `nest start
+    // --watch` has run).
+    seed: "node dist/prisma/seed.js",
   },
   datasource: {
     url: process.env["DATABASE_URL"]!,
