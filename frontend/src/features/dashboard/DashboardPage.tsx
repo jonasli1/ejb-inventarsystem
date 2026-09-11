@@ -26,9 +26,14 @@ export function DashboardPage() {
   const canViewArticles = hasPermission(PERMISSIONS.ARTICLES_READ);
   const canViewOrganizations = hasPermission(PERMISSIONS.ORGANIZATIONS_READ);
 
-  // GET /inventory (flat list) is keyset/cursor-paginated and deliberately
-  // has no cheap total count at scale (>1M rows) - the Inventar tile is a
-  // plain navigation link instead of a live counter, see the other tiles.
+  // GET /inventory (flat list) is keyset/cursor-paginated and has no cheap
+  // meta.total at scale, unlike the other list endpoints - the Inventar tile
+  // uses the dedicated GET /inventory/count endpoint instead.
+  const inventoryCount = useQuery({
+    queryKey: ['count', 'inventory'],
+    queryFn: async () => (await api.get<{ count: number }>('/inventory/count')).data.count,
+    enabled: canViewInventory,
+  });
   const articlesCount = useCount('articles', '/articles', canViewArticles);
   const organizationsCount = useCount('organizations', '/organizations', canViewOrganizations);
   const openLoansCount = useQuery({
@@ -50,7 +55,7 @@ export function DashboardPage() {
   const stats = [
     {
       label: 'Inventar',
-      value: undefined,
+      value: inventoryCount.data,
       icon: Boxes,
       to: '/inventory',
       show: canViewInventory,

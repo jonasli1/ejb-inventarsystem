@@ -220,6 +220,14 @@ export class InventoryService {
     return paginate(grouped, total, page, pageSize);
   }
 
+  /** Cheap total for the dashboard tile - findAll's own list is keyset-paginated with no free COUNT(*). */
+  async count(): Promise<{ count: number }> {
+    const count = await this.prisma.inventoryItem.count({
+      where: { deletedAt: null },
+    });
+    return { count };
+  }
+
   async findOne(id: string) {
     const item = await this.prisma.inventoryItem.findFirst({
       where: { id, deletedAt: null },

@@ -178,6 +178,16 @@ describe('InventoryService', () => {
     );
   });
 
+  describe('count', () => {
+    it('returns the total non-deleted item count', async () => {
+      prisma.inventoryItem.count.mockResolvedValue(42);
+      await expect(service.count()).resolves.toEqual({ count: 42 });
+      expect(prisma.inventoryItem.count).toHaveBeenCalledWith({
+        where: { deletedAt: null },
+      });
+    });
+  });
+
   describe('findAll', () => {
     it('filters by the article category via a relation filter', async () => {
       await service.findAll({ categoryId: 'category-1' });

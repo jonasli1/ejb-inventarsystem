@@ -43,6 +43,13 @@ export class InventoryController {
     return this.inventoryService.findAll(query);
   }
 
+  // Must come before @Get(':id') - otherwise NestJS matches "count" as :id.
+  @RequirePermissions(PERMISSIONS.INVENTORY_READ)
+  @Get('count')
+  count() {
+    return this.inventoryService.count();
+  }
+
   @RequirePermissions(PERMISSIONS.INVENTORY_READ)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
