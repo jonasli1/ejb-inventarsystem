@@ -34,6 +34,9 @@ export function ImageUploadField({
           params: { entityType, entityId, category: 'image' },
         })
       ).data,
+    // See the same option in FileUploadList - never trust a same-key cache
+    // entry that might predate a recent upload.
+    refetchOnMount: 'always',
   });
   const image = query.data?.[0] ?? null;
   // Built relative to the axios client's baseURL - see the comment in

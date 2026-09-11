@@ -6,6 +6,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { createValidationPipe } from './common/pipes/validation-pipe.factory';
 
@@ -31,6 +32,16 @@ async function bootstrap() {
   app.use(helmet());
   app.use(compression());
   app.use(cookieParser());
+  // Every response here is dynamic API data (Express adds an ETag by
+  // default, but sets no Cache-Control) - without an explicit directive,
+  // browsers and any intermediary proxy are free to apply their own
+  // heuristic caching to GET responses, which can silently serve stale data
+  // (e.g. an attachment list fetched before a new upload) indefinitely in a
+  // long-lived session. `no-store` forbids caching this response anywhere.
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  });
 
   app.enableCors({
     origin: config.get<string>('corsOrigin'),

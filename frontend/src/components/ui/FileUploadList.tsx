@@ -110,6 +110,11 @@ export function FileUploadList({
           params: { entityType, entityId, category },
         })
       ).data,
+    // This list must never show a file as missing just because a cached
+    // copy predates a recent upload (e.g. the article's own document list,
+    // re-opened in a long-lived session well past staleTime) - always hit
+    // the network on mount rather than trusting a same-key cache entry.
+    refetchOnMount: 'always',
   });
 
   const uploadMutation = useMutation({
