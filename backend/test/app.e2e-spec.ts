@@ -1765,6 +1765,65 @@ describe('Inventarsystem API (e2e)', () => {
         noMatch.body.data.some((i: { id: string }) => i.id === item.body.id),
       ).toBe(false);
     });
+
+    it('ignores "0" and spaces when searching by inventory number', async () => {
+      const org = await request(app.getHttpServer())
+        .post('/api/v1/organizations')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Zero-Space Suchtest e.V.' })
+        .expect(201);
+      const unit = await request(app.getHttpServer())
+        .post(`/api/v1/organizations/${org.body.id}/units`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Search Unit' })
+        .expect(201);
+      const location = await request(app.getHttpServer())
+        .post('/api/v1/locations')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Suchlager Zero-Space' })
+        .expect(201);
+      const room = await request(app.getHttpServer())
+        .post('/api/v1/rooms')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Search Room', locationId: location.body.id })
+        .expect(201);
+      const article = await request(app.getHttpServer())
+        .post('/api/v1/articles')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Funkstrecke Sennheiser' })
+        .expect(201);
+      const item = await request(app.getHttpServer())
+        .post('/api/v1/inventory')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          articleId: article.body.id,
+          locationId: location.body.id,
+          roomId: room.body.id,
+          ownerOrganizationId: org.body.id,
+          ownerUnitId: unit.body.id,
+          inventoryNumber: 'EJB 0831',
+        })
+        .expect(201);
+
+      // "EJB831" has neither the space nor the leading zero of the real
+      // "EJB 0831" inventory number, but should still find it.
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/inventory?search=EJB831')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(
+        res.body.data.some((i: { id: string }) => i.id === item.body.id),
+      ).toBe(true);
+
+      // A search for only "0"s/spaces must not match every item.
+      const zeroOnly = await request(app.getHttpServer())
+        .get('/api/v1/inventory?search=' + encodeURIComponent('0 0'))
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(
+        zeroOnly.body.data.some((i: { id: string }) => i.id === item.body.id),
+      ).toBe(false);
+    });
   });
 
   describe('group -> organization/unit scope and org-scoped loan approval workflow', () => {

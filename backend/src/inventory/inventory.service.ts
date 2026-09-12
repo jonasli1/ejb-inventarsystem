@@ -181,6 +181,21 @@ export class InventoryService {
       )
     `;
 
+    // Inventory numbers are searched ignoring "0" and spaces (e.g. "EJB831"
+    // must find "EJB 0831") - Prisma's `contains` can't strip characters
+    // from the stored value, so this needs a raw comparison on both sides,
+    // same pattern as the alias match above. Skipped when the search term
+    // normalizes to nothing (e.g. searching just "0"), which would
+    // otherwise match every item via an empty LIKE '%%'.
+    const normalizedSearch = search.replace(/[0 ]/g, '');
+    const normalizedNumberMatches = normalizedSearch
+      ? await this.prisma.$queryRaw<{ id: string }[]>`
+          SELECT id FROM inventory_items
+          WHERE deleted_at IS NULL
+            AND regexp_replace(inventory_number, '[0 ]', '', 'g') ILIKE ${'%' + normalizedSearch + '%'}
+        `
+      : [];
+
     const OR: Prisma.InventoryItemWhereInput[] = [
       { inventoryNumber: { contains: search, mode: 'insensitive' } },
       { serialNumber: { contains: search, mode: 'insensitive' } },
@@ -202,6 +217,9 @@ export class InventoryService {
 
     if (aliasMatches.length) {
       OR.push({ articleId: { in: aliasMatches.map((m) => m.id) } });
+    }
+    if (normalizedNumberMatches.length) {
+      OR.push({ id: { in: normalizedNumberMatches.map((m) => m.id) } });
     }
 
     return { OR };

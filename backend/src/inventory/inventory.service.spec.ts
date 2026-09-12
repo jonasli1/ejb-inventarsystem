@@ -221,6 +221,35 @@ describe('InventoryService', () => {
       });
     });
 
+    it('matches inventory numbers ignoring "0" (e.g. search "INV-KABEL-5" finds "INV-KABEL-005")', async () => {
+      prisma.$queryRaw
+        .mockResolvedValueOnce([]) // alias match: none
+        .mockResolvedValueOnce([{ id: 'item-leading-zero' }]); // normalized inventory-number match
+      await service.findAll({ search: 'INV-KABEL-5' });
+      const call = prisma.inventoryItem.findMany.mock.calls[0][0];
+      expect(call.where.AND[0].OR).toContainEqual({
+        id: { in: ['item-leading-zero'] },
+      });
+    });
+
+    it('matches inventory numbers ignoring spaces (e.g. search "EJB831" finds "EJB 0831")', async () => {
+      prisma.$queryRaw
+        .mockResolvedValueOnce([]) // alias match: none
+        .mockResolvedValueOnce([{ id: 'item-with-space' }]); // normalized inventory-number match
+      await service.findAll({ search: 'EJB831' });
+      const call = prisma.inventoryItem.findMany.mock.calls[0][0];
+      expect(call.where.AND[0].OR).toContainEqual({
+        id: { in: ['item-with-space'] },
+      });
+    });
+
+    it('does not run the normalized inventory-number match when the search term is only "0"s and spaces', async () => {
+      await service.findAll({ search: '0 0' });
+      // Only the alias-match raw query should run - a normalized comparison
+      // against an empty pattern would otherwise match every item via LIKE '%%'.
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    });
+
     it('orders the flat list by (inventoryNumber, id) for stable, naturally-sorted keyset pagination', async () => {
       await service.findAll({});
       expect(prisma.inventoryItem.findMany).toHaveBeenCalledWith(
