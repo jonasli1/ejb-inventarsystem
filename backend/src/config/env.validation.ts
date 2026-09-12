@@ -16,7 +16,16 @@ export const envValidationSchema = Joi.object({
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('30d'),
 
   THROTTLE_TTL: Joi.number().default(60000),
-  THROTTLE_LIMIT: Joi.number().default(20),
+  // 20/min was tuned for one request at a time, not a real page load: a
+  // single list view fires the list itself, several reference-data lookups
+  // (locations/categories/organizations/articles for filters), and one
+  // thumbnail request per visible row - routinely 30-60+ requests within a
+  // few seconds for one legitimate user, before counting a second person on
+  // the same connection. 300/min covers that comfortably while still
+  // blocking a scripted flood; login has its own separate, tighter limit
+  // below and is unaffected by this one (verified: exhausting this bucket
+  // does not throttle a login attempt right after).
+  THROTTLE_LIMIT: Joi.number().default(300),
   THROTTLE_AUTH_LIMIT: Joi.number().default(10),
   THROTTLE_AUTH_TTL: Joi.number().default(60000),
 
