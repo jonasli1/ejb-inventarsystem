@@ -177,6 +177,10 @@ export function FileUploadList({
         <div className="flex justify-center py-4">
           <Spinner />
         </div>
+      ) : query.isError ? (
+        <p className="rounded-lg border border-dashed border-red-300 bg-red-50 px-3 py-3 text-center text-xs text-red-700">
+          Dateien konnten nicht geladen werden: {getApiErrorMessage(query.error)}
+        </p>
       ) : !query.data || query.data.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border px-3 py-3 text-center text-xs text-muted">
           Keine Dateien vorhanden.

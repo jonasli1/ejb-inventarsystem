@@ -72,7 +72,10 @@ export function ImageUploadField({
           type="button"
           disabled={!image}
           onClick={() => image && lightbox.open(`/attachments/${image.id}/download`, label)}
-          className="group relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-canvas disabled:cursor-default"
+          title={query.isError ? `Foto konnte nicht geladen werden: ${getApiErrorMessage(query.error)}` : undefined}
+          className={`group relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-canvas disabled:cursor-default ${
+            query.isError ? 'border-red-300' : 'border-border'
+          }`}
         >
           {objectUrl ? (
             <>
@@ -82,7 +85,7 @@ export function ImageUploadField({
               </span>
             </>
           ) : (
-            <ImageOff size={22} className="text-muted" />
+            <ImageOff size={22} className={query.isError ? 'text-red-500' : 'text-muted'} />
           )}
         </button>
         {canManage && (
