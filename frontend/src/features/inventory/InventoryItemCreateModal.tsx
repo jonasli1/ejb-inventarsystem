@@ -87,6 +87,11 @@ export function InventoryItemCreateModal({ open, onClose }: { open: boolean; onC
     <Modal open={open} onClose={onClose} title="Neues Inventarobjekt" size="lg">
       <form
         onSubmit={handleSubmit((values) => mutation.mutate(values))}
+        // See the same attribute in InventoryDetailModal's form - avoids a
+        // date input's native validity state (can get stuck invalid after
+        // being cleared programmatically in some browsers) blocking submit
+        // before react-hook-form/zod's own validation even runs.
+        noValidate
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
         <div className="sm:col-span-2">

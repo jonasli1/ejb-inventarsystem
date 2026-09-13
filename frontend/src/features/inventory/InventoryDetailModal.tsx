@@ -287,6 +287,16 @@ export function InventoryDetailModal({
 
             <form
               onSubmit={handleSubmit((values) => updateMutation.mutate(values))}
+              // Native constraint validation isn't used anywhere in this
+              // form (no field relies on `required` etc.) - but some
+              // browsers (Safari in particular) can leave a date input's
+              // own `validity.badInput` stuck after it's cleared
+              // programmatically (the "x" button in DateInput), which then
+              // blocks the native submit and refocuses the field before
+              // react-hook-form's handleSubmit ever runs. noValidate avoids
+              // that entirely by leaving validation solely to this form's
+              // own JS-level checks.
+              noValidate
               className="grid grid-cols-1 gap-4 sm:grid-cols-2"
             >
               <Field label="Inventarnummer (optional)" error={errors.inventoryNumber?.message}>
