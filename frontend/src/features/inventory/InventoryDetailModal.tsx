@@ -122,8 +122,14 @@ export function InventoryDetailModal({
               ownerOrganizationId: values.ownerOrganizationId,
               ownerUnitId: values.ownerUnitId,
               purchasePrice: values.purchasePrice ? Number(values.purchasePrice) : undefined,
-              purchaseDate: values.purchaseDate || undefined,
-              nextDguvV3Check: values.nextDguvV3Check || undefined,
+              // `|| null` (not `undefined`): this form always resends the
+              // full current field set on submit, so an emptied date must
+              // reach the backend as an explicit clear - `undefined` would
+              // instead be dropped from the request body and leave the old
+              // value in place (the backend treats "field omitted" and
+              // "field explicitly cleared" differently, see inventory.service.ts).
+              purchaseDate: values.purchaseDate || null,
+              nextDguvV3Check: values.nextDguvV3Check || null,
             }
           : {}),
         ...(canChangeInvNum ? { inventoryNumber: values.inventoryNumber || undefined } : {}),

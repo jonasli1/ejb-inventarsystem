@@ -74,16 +74,20 @@ export class CreateInventoryItemDto {
   purchasePrice?: number;
 
   @ApiPropertyOptional({
-    description: 'Purchase date. Optional, left empty when omitted.',
+    description:
+      'Purchase date. Optional, left empty when omitted. On update, send `null` to clear an already-set date.',
+    nullable: true,
   })
   @IsOptional()
   @IsDateString()
-  purchaseDate?: string;
+  purchaseDate?: string | null;
 
   @ApiPropertyOptional({
-    description: 'Date of the next scheduled DGUV V3 electrical safety check.',
+    description:
+      'Date of the next scheduled DGUV V3 electrical safety check. On update, send `null` to clear an already-set date.',
+    nullable: true,
   })
   @IsOptional()
   @IsDateString()
-  nextDguvV3Check?: string;
+  nextDguvV3Check?: string | null;
 }

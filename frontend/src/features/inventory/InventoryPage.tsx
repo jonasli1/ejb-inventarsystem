@@ -9,6 +9,8 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { findMatchedAlias } from '@/lib/matched-alias';
 import { INVENTORY_STATUS_LABEL } from '@/lib/status-labels';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
@@ -226,26 +228,34 @@ export function InventoryPage() {
                   <p className="px-3 py-2 text-sm text-muted">Suche …</p>
                 ) : suggestionsQuery.data && suggestionsQuery.data.length > 0 ? (
                   <ul className="max-h-64 overflow-y-auto py-1">
-                    {suggestionsQuery.data.map((item) => (
-                      <li key={item.id}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedItem(item)}
-                          className="flex w-full flex-col px-3 py-1.5 text-left text-sm hover:bg-canvas"
-                        >
-                          <span className="text-ink">
-                            {item.article.name}{' '}
-                            {item.inventoryNumber && (
-                              <span className="font-mono text-xs text-muted">{item.inventoryNumber}</span>
+                    {suggestionsQuery.data.map((item) => {
+                      const matchedAlias = findMatchedAlias(item.article.aliases, debouncedSearch);
+                      return (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedItem(item)}
+                            className="flex w-full flex-col px-3 py-1.5 text-left text-sm hover:bg-canvas"
+                          >
+                            <span className="text-ink">
+                              {item.article.name}{' '}
+                              {item.inventoryNumber && (
+                                <span className="font-mono text-xs text-muted">{item.inventoryNumber}</span>
+                              )}
+                            </span>
+                            {matchedAlias && (
+                              <Badge tone="purple" className="mt-0.5 self-start">
+                                Alias: {matchedAlias}
+                              </Badge>
                             )}
-                          </span>
-                          <span className="text-xs text-muted">
-                            {item.ownerOrganization.name} · {item.location.name} ·{' '}
-                            {INVENTORY_STATUS_LABEL[item.status]}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
+                            <span className="text-xs text-muted">
+                              {item.ownerOrganization.name} · {item.location.name} ·{' '}
+                              {INVENTORY_STATUS_LABEL[item.status]}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
                   <p className="px-3 py-2 text-sm text-muted">Keine Treffer gefunden.</p>
@@ -342,6 +352,9 @@ export function InventoryPage() {
                         <ChevronRight size={16} className="text-muted" />
                       )}
                       <span className="font-medium text-ink">{entry.article.name}</span>
+                      {findMatchedAlias(entry.article.aliases, debouncedSearch) && (
+                        <Badge tone="purple">Alias: {findMatchedAlias(entry.article.aliases, debouncedSearch)}</Badge>
+                      )}
                       <span className="text-sm text-muted">
                         {entry.stock.total} gesamt · {entry.stock.available} verfügbar · {entry.stock.borrowed}{' '}
                         ausgeliehen
@@ -350,7 +363,13 @@ export function InventoryPage() {
                     {expandedArticle === entry.article.id && (
                       <div>
                         {entry.units.map((item) => (
-                          <InventoryItemRow key={item.id} item={item} onSelect={setSelectedItem} nested />
+                          <InventoryItemRow
+                            key={item.id}
+                            item={item}
+                            onSelect={setSelectedItem}
+                            nested
+                            searchTerm={debouncedSearch}
+                          />
                         ))}
                       </div>
                     )}
@@ -381,7 +400,9 @@ export function InventoryPage() {
               hasMore={flatQuery.hasNextPage}
               isFetchingMore={flatQuery.isFetchingNextPage}
               onEndReached={() => void flatQuery.fetchNextPage()}
-              renderItem={(item) => <InventoryItemRow item={item} onSelect={setSelectedItem} />}
+              renderItem={(item) => (
+                <InventoryItemRow item={item} onSelect={setSelectedItem} searchTerm={debouncedSearch} />
+              )}
             />
           </>
         )}

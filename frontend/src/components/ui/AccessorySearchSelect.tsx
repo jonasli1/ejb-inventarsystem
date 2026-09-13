@@ -2,8 +2,10 @@ import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
+import { findMatchedAlias } from '@/lib/matched-alias';
 import type { AccessoryCandidate, PaginatedResult } from '@/lib/api-types';
 import { Input } from '@/components/ui/Input';
+import { Badge } from '@/components/ui/Badge';
 import { ArticleImageThumbnail } from '@/components/ui/ArticleImageThumbnail';
 
 /**
@@ -80,6 +82,11 @@ export function AccessorySearchSelect({
                           <span className="font-mono text-xs text-muted">{c.inventoryNumber}</span>
                         )}
                       </span>
+                      {findMatchedAlias(c.article.aliases, debounced) && (
+                        <Badge tone="purple" className="mt-0.5 self-start">
+                          Alias: {findMatchedAlias(c.article.aliases, debounced)}
+                        </Badge>
+                      )}
                       <span className={`text-xs ${c.eligible ? 'text-muted' : 'text-red-600'}`}>
                         {c.eligible ? `${c.ownerOrganization.name} · ${c.location.name}` : c.reason}
                       </span>

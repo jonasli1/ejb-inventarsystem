@@ -1,6 +1,7 @@
 import type { InventoryItem } from '@/lib/api-types';
-import { InventoryStatusBadge } from '@/components/ui/Badge';
+import { InventoryStatusBadge, Badge } from '@/components/ui/Badge';
 import { ArticleImageThumbnail } from '@/components/ui/ArticleImageThumbnail';
+import { findMatchedAlias } from '@/lib/matched-alias';
 
 /**
  * One inventory item as a row - a table-like row on larger screens, a
@@ -12,11 +13,16 @@ export function InventoryItemRow({
   item,
   onSelect,
   nested,
+  searchTerm,
 }: {
   item: InventoryItem;
   onSelect: (item: InventoryItem) => void;
   nested?: boolean;
+  /** Current search box value - shown as an "Alias: …" badge when it only matched via an article alias, not the article's own name. */
+  searchTerm?: string;
 }) {
+  const matchedAlias = searchTerm ? findMatchedAlias(item.article.aliases, searchTerm) : undefined;
+
   return (
     <button
       type="button"
@@ -30,7 +36,14 @@ export function InventoryItemRow({
       {/* Desktop: table-like columns */}
       <div className="hidden flex-1 items-center gap-3 sm:flex">
         <span className="w-28 shrink-0 truncate font-mono text-xs text-ink">{item.inventoryNumber ?? '–'}</span>
-        <span className="w-48 shrink-0 truncate text-ink">{item.article.name}</span>
+        <span className="w-48 shrink-0">
+          <span className="block truncate text-ink">{item.article.name}</span>
+          {matchedAlias && (
+            <Badge tone="purple" className="mt-0.5">
+              Alias: {matchedAlias}
+            </Badge>
+          )}
+        </span>
         <span className="w-32 shrink-0">
           <InventoryStatusBadge status={item.status} />
         </span>
@@ -46,6 +59,11 @@ export function InventoryItemRow({
           <span className="truncate font-medium text-ink">{item.article.name}</span>
           <InventoryStatusBadge status={item.status} />
         </div>
+        {matchedAlias && (
+          <Badge tone="purple" className="mt-0.5">
+            Alias: {matchedAlias}
+          </Badge>
+        )}
         <p className="mt-0.5 truncate text-xs text-muted">
           {item.inventoryNumber && <span className="font-mono">{item.inventoryNumber}</span>}
           {item.inventoryNumber && ' · '}

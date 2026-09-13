@@ -3,9 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import { useArticles } from '@/lib/reference-data';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
+import { findMatchedAlias } from '@/lib/matched-alias';
 import type { Article, CursorResult, InventoryItem } from '@/lib/api-types';
 import { INVENTORY_STATUS_LABEL } from '@/lib/status-labels';
 import { Input } from '@/components/ui/Input';
+import { Badge } from '@/components/ui/Badge';
 import { ArticleImageThumbnail } from '@/components/ui/ArticleImageThumbnail';
 
 interface Row {
@@ -58,7 +60,11 @@ export function ItemSearchSelect({
     if (needle.length < 2) return [];
     const articleRows: Row[] = allowArticles
       ? (articles ?? [])
-          .filter((a) => a.stock.available > 0 && a.name.toLowerCase().includes(needle))
+          .filter((a) => {
+            if (a.stock.available <= 0) return false;
+            if (a.name.toLowerCase().includes(needle)) return true;
+            return a.aliases.some((alias) => alias.toLowerCase().includes(needle));
+          })
           .slice(0, 3)
           .map((a) => ({ kind: 'article', key: `article-${a.id}`, article: a }))
       : [];
@@ -147,11 +153,18 @@ export function ItemSearchSelect({
                     {row.kind === 'article' ? (
                       <>
                         <ArticleImageThumbnail articleId={row.article!.id} size="h-8 w-8" />
-                        <span className="flex-1">
-                          <span className="text-ink">{row.article!.name}</span>
-                          <span className="ml-1.5 text-xs text-muted">
-                            ({row.article!.stock.available} verfügbar – nach Menge)
+                        <span className="flex flex-1 flex-col">
+                          <span>
+                            <span className="text-ink">{row.article!.name}</span>
+                            <span className="ml-1.5 text-xs text-muted">
+                              ({row.article!.stock.available} verfügbar – nach Menge)
+                            </span>
                           </span>
+                          {findMatchedAlias(row.article!.aliases, debounced) && (
+                            <Badge tone="purple" className="mt-0.5 self-start">
+                              Alias: {findMatchedAlias(row.article!.aliases, debounced)}
+                            </Badge>
+                          )}
                         </span>
                       </>
                     ) : (
@@ -164,6 +177,11 @@ export function ItemSearchSelect({
                               <span className="font-mono text-xs text-muted">{row.item!.inventoryNumber}</span>
                             )}
                           </span>
+                          {findMatchedAlias(row.item!.article.aliases, debounced) && (
+                            <Badge tone="purple" className="mt-0.5 self-start">
+                              Alias: {findMatchedAlias(row.item!.article.aliases, debounced)}
+                            </Badge>
+                          )}
                           <span className="text-xs text-muted">
                             {row.item!.ownerOrganization.name} · {row.item!.location.name} ·{' '}
                             {INVENTORY_STATUS_LABEL[row.item!.status] ?? row.item!.status}

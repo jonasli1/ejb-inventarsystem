@@ -407,6 +407,24 @@ describe('InventoryService', () => {
       expect(result.notes).toBe('hello');
     });
 
+    it('clears purchaseDate when explicitly set to null', async () => {
+      const result = await service.update(
+        'item-1',
+        { purchaseDate: null },
+        manageUser,
+      );
+      expect(result.purchaseDate).toBeNull();
+    });
+
+    it('clears nextDguvV3Check when explicitly set to null', async () => {
+      const result = await service.update(
+        'item-1',
+        { nextDguvV3Check: null },
+        manageUser,
+      );
+      expect(result.nextDguvV3Check).toBeNull();
+    });
+
     it('allows changing both the inventory number and other fields when the actor has both permissions', async () => {
       const result = await service.update(
         'item-1',
