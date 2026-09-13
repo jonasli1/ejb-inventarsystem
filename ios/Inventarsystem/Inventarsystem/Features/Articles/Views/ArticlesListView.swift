@@ -120,7 +120,7 @@ private struct ArticleRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ArticleThumbnailView(articleId: item.id)
+            ArticleThumbnailView(articleId: item.id, size: 44)
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.article.name).font(.body.weight(.medium))
                 if !subtitle.isEmpty {
@@ -143,29 +143,6 @@ private struct ArticleRowView: View {
 /// `AttachmentService.list` call per row (feasible since there are far fewer distinct Artikel
 /// than Inventarobjekte; `InventoryRowView` stays deliberately thumbnail-free for that reason).
 /// Never loads the medium/original image from a list row, per the app's lazy-loading rule.
-private struct ArticleThumbnailView: View {
-    let articleId: String
-
-    @State private var thumbnailURL: URL?
-    private let attachmentService = AttachmentService()
-
-    var body: some View {
-        AuthenticatedAsyncImage(url: thumbnailURL) { image in
-            image.resizable().scaledToFill()
-        } placeholder: {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color(.secondarySystemBackground))
-                .overlay(Image(systemName: "shippingbox").foregroundStyle(.secondary).font(.caption))
-        }
-        .frame(width: 44, height: 44)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .task(id: articleId) {
-            let attachments = (try? await attachmentService.list(entityType: .article, entityId: articleId, category: .image)) ?? []
-            thumbnailURL = attachments.first?.resolvedThumbnailURL
-        }
-    }
-}
-
 #Preview {
     ArticlesListView()
         .environment(AuthSession.shared)

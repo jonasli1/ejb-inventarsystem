@@ -73,7 +73,9 @@ final class UserDetailViewModel {
             availableRoles = (try? await roleService.fetchAll()) ?? []
         }
         if availableGroups.isEmpty {
-            availableGroups = (try? await groupService.fetchAll(page: 1, pageSize: 200).items) ?? []
+            // pageSize is capped at 100 server-side (`PaginationQueryDto`'s `@Max(100)`) — 200
+            // used to 400 silently here (swallowed by `try?`), leaving this picker empty.
+            availableGroups = (try? await groupService.fetchAll(page: 1, pageSize: 100).items) ?? []
         }
     }
 

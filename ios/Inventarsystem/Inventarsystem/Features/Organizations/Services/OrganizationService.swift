@@ -16,10 +16,12 @@ nonisolated struct OrganizationService: OrganizationServicing {
     /// `GET /organizations` is offset-paginated (verified against a live instance), unlike
     /// `/locations`. Organizations are a genuinely small, admin-managed vocabulary in practice
     /// (the two-tier owner model), so a single large page stands in for "all" here rather than
-    /// building a second paging UI just for this picker's sake.
+    /// building a second paging UI just for this picker's sake. `pageSize` is capped at 100
+    /// server-side (`PaginationQueryDto`'s `@Max(100)`) — 200 used to 400 with "pageSize darf
+    /// höchstens 100 sein.".
     func fetchAll() async throws -> [Organization] {
         let result: OffsetPage<Organization> = try await APIClient.shared.request(
-            "organizations", query: [URLQueryItem(name: "pageSize", value: "200")]
+            "organizations", query: [URLQueryItem(name: "pageSize", value: "100")]
         )
         return result.data
     }

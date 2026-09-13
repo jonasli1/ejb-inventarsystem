@@ -8,8 +8,10 @@ import Foundation
 /// The matching rules are stored server-side (`StickerProfileService`/`GET /sticker-profiles`)
 /// so a profile calibrated once is shared across every device and user — only `beispielbilder`
 /// (example calibration photos) stay local to each device, since they're just a testing aid, not
-/// part of the actual matching logic.
-nonisolated struct StickerProfile: Decodable, Identifiable, Sendable, Hashable {
+/// part of the actual matching logic. `Encodable` is only used locally, for
+/// `StickerProfileStore`'s offline cache (see `CodingKeys` — `beispielbilder` is excluded from
+/// both directions since it's re-derived from `LocalStickerExampleRegistry` after load anyway).
+nonisolated struct StickerProfile: Codable, Identifiable, Sendable, Hashable {
     enum NumberFormat: String, Codable, Sendable {
         /// Keep the captured digits exactly as recognized, including leading zeros.
         case verbatim
@@ -83,6 +85,20 @@ nonisolated struct StickerProfile: Decodable, Identifiable, Sendable, Hashable {
         padLength = try container.decodeIfPresent(Int.self, forKey: .padLength) ?? 0
         isDefault = try container.decodeIfPresent(Bool.self, forKey: .isDefault) ?? false
         beispielbilder = []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(praefix, forKey: .praefix)
+        try container.encode(trenner, forKey: .trenner)
+        try container.encode(ankerBegriffe, forKey: .ankerBegriffe)
+        try container.encode(extraktionsMuster, forKey: .extraktionsMuster)
+        try container.encode(ausschlussMuster, forKey: .ausschlussMuster)
+        try container.encode(zahlenFormat, forKey: .zahlenFormat)
+        try container.encode(padLength, forKey: .padLength)
+        try container.encode(isDefault, forKey: .isDefault)
     }
 
     /// A fixture matching the backend's seeded default profile — used by SwiftUI Previews and
