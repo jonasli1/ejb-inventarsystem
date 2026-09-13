@@ -9,9 +9,15 @@ import SwiftUI
 
 @main
 struct InventarsystemApp: App {
+    @State private var session = AuthSession.shared
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
+                .environment(session)
+                .task {
+                    await session.bootstrap()
+                }
         }
     }
 }
