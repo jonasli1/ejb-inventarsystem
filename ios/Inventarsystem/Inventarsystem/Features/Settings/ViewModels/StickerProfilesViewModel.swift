@@ -1,64 +1,52 @@
 import Foundation
 import Observation
-import UniformTypeIdentifiers
 
 @MainActor
 @Observable
 final class StickerProfilesViewModel {
     let store: StickerProfileStore
+    private let service: StickerProfileServicing
     var errorMessage: String?
-    var exportedFileURL: URL?
+    private(set) var isProcessing = false
 
-    init(store: StickerProfileStore = .shared) {
+    init(store: StickerProfileStore = .shared, service: StickerProfileServicing = StickerProfileService()) {
         self.store = store
+        self.service = service
     }
 
     var profiles: [StickerProfile] { store.profiles }
+    var isLoading: Bool { store.isLoading }
 
-    func delete(at offsets: IndexSet) {
-        for index in offsets {
-            let profile = store.profiles[index]
+    func load() async {
+        await store.refresh()
+    }
+
+    func delete(_ profile: StickerProfile) async {
+        isProcessing = true
+        defer { isProcessing = false }
+        do {
+            try await service.delete(id: profile.id)
             for filename in profile.beispielbilder {
                 StickerExampleImageStore.delete(filename)
             }
-            store.delete(profile)
-        }
-    }
-
-    func makeDefault(_ profile: StickerProfile) {
-        for var current in store.profiles {
-            let shouldBeDefault = current.id == profile.id
-            guard current.isDefault != shouldBeDefault else { continue }
-            current.isDefault = shouldBeDefault
-            store.upsert(current)
-        }
-    }
-
-    /// Writes all profiles as pretty-printed JSON to a temp file for sharing via the system
-    /// share sheet — profiles are local-only (no backend endpoint for them), so export/import is
-    /// the only way to move a calibrated set between devices.
-    func exportProfiles() {
-        guard let data = store.exportJSON() else {
-            errorMessage = "Profile konnten nicht exportiert werden."
-            return
-        }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("sticker-profile.json")
-        do {
-            try data.write(to: url, options: .atomic)
-            exportedFileURL = url
+            LocalStickerExampleRegistry.removeAll(for: profile.id)
+            await store.refresh()
         } catch {
-            errorMessage = "Profile konnten nicht exportiert werden."
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "Sticker-Profil konnte nicht gelöscht werden."
         }
     }
 
-    func importProfiles(from url: URL) {
+    func makeDefault(_ profile: StickerProfile) async {
+        guard !profile.isDefault else { return }
+        isProcessing = true
+        defer { isProcessing = false }
+        var input = StickerProfileInput(from: profile)
+        input.isDefault = true
         do {
-            let needsAccess = url.startAccessingSecurityScopedResource()
-            defer { if needsAccess { url.stopAccessingSecurityScopedResource() } }
-            let data = try Data(contentsOf: url)
-            try store.importJSON(data)
+            _ = try await service.update(id: profile.id, input)
+            await store.refresh()
         } catch {
-            errorMessage = "Die Datei enthält keine gültigen Sticker-Profile."
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "Sticker-Profil konnte nicht aktualisiert werden."
         }
     }
 }

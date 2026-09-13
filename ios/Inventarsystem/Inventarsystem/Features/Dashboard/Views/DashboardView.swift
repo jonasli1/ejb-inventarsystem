@@ -1,13 +1,23 @@
 import SwiftUI
 
 /// Mirrors the frontend's `DashboardPage`: permission-gated stat tiles (Inventar/Artikel/
-/// Ausleihen/Organisationen) plus a small account-info card. Tile taps are reported upward via
-/// `onSelectTile` rather than navigating directly, since which section a tap should jump to is a
-/// shell-level concern (switch tabs on iPhone, change the sidebar selection on iPad).
+/// Ausleihen/Organisationen) plus a small account-info card. This is also the app's only
+/// entry point to the Profil screen (top-right toolbar button) — Profil is deliberately not a
+/// bottom-tab destination, per the shell's design.
+///
+/// A tile tap either switches the shell's selected tab (Inventar/Ausleihe, still tabs) via
+/// `onSelectTile`, or pushes locally onto this screen's own `NavigationStack` (Artikel/
+/// Organisationen, which live inside "Einstellungen" now and aren't tabs anymore).
 struct DashboardView: View {
     @Environment(AuthSession.self) private var session
     @State private var viewModel = DashboardViewModel()
+    @State private var showProfile = false
+    @State private var pushedDestination: DashboardViewModel.Destination?
     var onSelectTile: (DashboardViewModel.Destination) -> Void = { _ in }
+
+    /// Fixed tile height so the grid's rows line up regardless of label length or whether a
+    /// tile shows a number or the "Bestand ansehen" placeholder.
+    private static let tileHeight: CGFloat = 84
 
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: 12)]
 
@@ -33,7 +43,7 @@ struct DashboardView: View {
                         LazyVGrid(columns: columns, spacing: 12) {
                             ForEach(viewModel.tiles) { tile in
                                 Button {
-                                    onSelectTile(tile.id)
+                                    select(tile.id)
                                 } label: {
                                     statTile(tile)
                                 }
@@ -58,7 +68,37 @@ struct DashboardView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Dashboard")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showProfile = true
+                    } label: {
+                        Image(systemName: "person.crop.circle")
+                    }
+                    .accessibilityLabel("Profil")
+                    .accessibilityIdentifier("dashboard.profileButton")
+                }
+            }
+            .navigationDestination(item: $pushedDestination) { destination in
+                switch destination {
+                case .articles: ArticlesListView()
+                case .organizations: OrganizationsListView()
+                case .inventory, .loans: EmptyView()
+                }
+            }
+            .sheet(isPresented: $showProfile) {
+                ProfileView()
+            }
             .task { await viewModel.load() }
+        }
+    }
+
+    private func select(_ destination: DashboardViewModel.Destination) {
+        switch destination {
+        case .inventory, .loans:
+            onSelectTile(destination)
+        case .articles, .organizations:
+            pushedDestination = destination
         }
     }
 
@@ -79,12 +119,16 @@ struct DashboardView: View {
                 } else {
                     Text("Bestand ansehen").font(.subheadline.weight(.semibold))
                 }
-                Text(tile.label).font(.caption).foregroundStyle(.secondary)
+                Text(tile.label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             Spacer(minLength: 0)
         }
         .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: Self.tileHeight, maxHeight: Self.tileHeight, alignment: .leading)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 }

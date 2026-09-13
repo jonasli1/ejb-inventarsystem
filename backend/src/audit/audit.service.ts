@@ -21,7 +21,8 @@ export type AuditEntityType =
   | 'Group'
   | 'InventoryItem'
   | 'LoanBlackoutPeriod'
-  | 'LoanTemplate';
+  | 'LoanTemplate'
+  | 'StickerProfile';
 
 /** Maps an entity type to its audit category. Used both by manual log() calls (when no category is given) and the AuditInterceptor. */
 const CATEGORY_BY_ENTITY_TYPE: Record<AuditEntityType, AuditCategory> = {
@@ -38,6 +39,7 @@ const CATEGORY_BY_ENTITY_TYPE: Record<AuditEntityType, AuditCategory> = {
   Role: AuditCategory.role,
   Group: AuditCategory.group,
   InventoryItem: AuditCategory.inventory,
+  StickerProfile: AuditCategory.other,
 };
 
 export function categoryForEntityType(

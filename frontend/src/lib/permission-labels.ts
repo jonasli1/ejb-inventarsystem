@@ -182,6 +182,11 @@ export const PERMISSION_INFO: Record<PermissionKey, PermissionInfo> = {
     label: 'Einstellungen verwalten',
     description: 'Systemeinstellungen, E-Mail-Server sowie Backups konfigurieren und ausführen.',
   },
+  [PERMISSIONS.SETTINGS_MANAGE_STICKER_PROFILES]: {
+    label: 'Sticker-Profile verwalten',
+    description:
+      'Sticker-Profile für die Kamera-Erkennung von Inventarnummern in der iOS-App anlegen, bearbeiten und löschen.',
+  },
   [PERMISSIONS.REPORTS_VIEW]: {
     label: 'Berichte ansehen',
     description: 'Berichte und Exporte (PDF/Excel) einsehen.',
@@ -275,7 +280,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   },
   {
     title: 'Einstellungen & Berichte',
-    permissions: [PERMISSIONS.SETTINGS_MANAGE, PERMISSIONS.REPORTS_VIEW],
+    permissions: [
+      PERMISSIONS.SETTINGS_MANAGE,
+      PERMISSIONS.SETTINGS_MANAGE_STICKER_PROFILES,
+      PERMISSIONS.REPORTS_VIEW,
+    ],
   },
   {
     title: 'Protokoll',

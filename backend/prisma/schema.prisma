@@ -106,6 +106,12 @@ enum BackupFrequency {
   monthly
 }
 
+enum StickerNumberFormat {
+  verbatim
+  stripLeadingZeros
+  zeroPadded
+}
+
 // ---------------------------------------------------------------------------
 // Auth / Identity
 // ---------------------------------------------------------------------------
@@ -788,4 +794,27 @@ model NotificationTemplate {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("notification_templates")
+}
+
+// Configurable inventory-sticker OCR profiles for the iOS app's on-device
+// number scanner (see ios/README.md). Shared across devices/users so a
+// calibrated profile doesn't need to be re-created per device; readable by
+// any authenticated user, but create/update/delete require
+// `settings.manage_sticker_profiles`. Example calibration photos stay
+// client-local (never uploaded here) - only the matching rules are synced.
+model StickerProfile {
+  id                String              @id @default(uuid())
+  name              String
+  praefix           String
+  trenner           String              @default(" ")
+  ankerBegriffe     String[]            @map("anker_begriffe")
+  extraktionsMuster String[]            @map("extraktions_muster")
+  ausschlussMuster  String[]            @default([]) @map("ausschluss_muster")
+  zahlenFormat      StickerNumberFormat @default(verbatim) @map("zahlen_format")
+  padLength         Int                 @default(0) @map("pad_length")
+  isDefault         Boolean             @default(false) @map("is_default")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  @@map("sticker_profiles")
 }

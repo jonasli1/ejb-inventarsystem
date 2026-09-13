@@ -56,6 +56,7 @@ export const PERMISSIONS = {
 
   // Einstellungen & Berichte
   SETTINGS_MANAGE: 'settings.manage',
+  SETTINGS_MANAGE_STICKER_PROFILES: 'settings.manage_sticker_profiles',
   REPORTS_VIEW: 'reports.view',
 
   // Protokoll
@@ -289,6 +290,12 @@ export const ALL_PERMISSIONS: {
     displayName: 'Einstellungen verwalten',
     description:
       'Systemeinstellungen, E-Mail-Server sowie Backups konfigurieren und ausführen.',
+  },
+  {
+    key: PERMISSIONS.SETTINGS_MANAGE_STICKER_PROFILES,
+    displayName: 'Sticker-Profile verwalten',
+    description:
+      'Sticker-Profile für die Kamera-Erkennung von Inventarnummern in der iOS-App anlegen, bearbeiten und löschen.',
   },
   {
     key: PERMISSIONS.REPORTS_VIEW,

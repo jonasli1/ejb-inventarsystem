@@ -21,11 +21,14 @@ final class StickerProfileEditorViewModel {
     var draft: StickerProfile
     let isNew: Bool
     private(set) var samples: [SampleResult] = []
+    private(set) var isSaving = false
     var errorMessage: String?
 
+    private let service: StickerProfileServicing
     private let store: StickerProfileStore
 
-    init(profile: StickerProfile?, store: StickerProfileStore = .shared) {
+    init(profile: StickerProfile?, service: StickerProfileServicing = StickerProfileService(), store: StickerProfileStore = .shared) {
+        self.service = service
         self.store = store
         if let profile {
             draft = profile
@@ -66,12 +69,14 @@ final class StickerProfileEditorViewModel {
             return
         }
         draft.beispielbilder.append(filename)
+        LocalStickerExampleRegistry.add(filename, for: draft.id)
         samples.append(SampleResult(filename: filename, image: image))
         await runRecognition(for: filename)
     }
 
     func removeSample(_ filename: String) {
         draft.beispielbilder.removeAll { $0 == filename }
+        LocalStickerExampleRegistry.remove(filename, for: draft.id)
         samples.removeAll { $0.filename == filename }
         StickerExampleImageStore.delete(filename)
     }
@@ -84,13 +89,25 @@ final class StickerProfileEditorViewModel {
         samples[index].isRecognizing = false
     }
 
-    /// Persists the draft, enforcing that at most one profile is flagged `isDefault`.
-    func save() {
-        store.upsert(draft)
-        guard draft.isDefault else { return }
-        for var other in store.profiles where other.id != draft.id && other.isDefault {
-            other.isDefault = false
-            store.upsert(other)
+    /// Saves via the backend (create or update), so the profile is immediately visible to every
+    /// other device/user — exclusivity of `isDefault` is enforced server-side. Returns whether
+    /// the save succeeded, so the view only dismisses on success.
+    func save() async -> Bool {
+        isSaving = true
+        defer { isSaving = false }
+        let input = StickerProfileInput(from: draft)
+        do {
+            if isNew {
+                let created = try await service.create(input)
+                LocalStickerExampleRegistry.migrate(from: draft.id, to: created.id)
+            } else {
+                _ = try await service.update(id: draft.id, input)
+            }
+            await store.refresh()
+            return true
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "Sticker-Profil konnte nicht gespeichert werden."
+            return false
         }
     }
 }

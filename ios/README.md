@@ -2,10 +2,11 @@
 
 Native iOS-App (Swift/SwiftUI) für das [Inventarsystem](../README.md) – funktional gleichwertig
 zur [`frontend/`](../frontend)-Web-Oberfläche, plus eine zusätzliche, rein auf dem Gerät
-laufende Kamera-Erkennung von Inventar-Aufklebern. Spricht ausschließlich die bestehende
-[`backend/`](../backend)-REST-API an; **am Backend wurde nichts geändert** – fehlende
-API-Funktionalität ist am Ende dieses Dokuments als Empfehlung aufgeführt, statt sie einseitig
-nachzurüsten.
+laufende Kamera-Erkennung von Inventar-Aufklebern. Spricht die bestehende
+[`backend/`](../backend)-REST-API an; die einzige Backend-Änderung für die App ist das
+`sticker-profiles`-Modul (siehe [Sticker-Erkennung](#sticker-erkennung-kamera-scan)) – alle
+sonstige fehlende API-Funktionalität ist am Ende dieses Dokuments als Empfehlung aufgeführt,
+statt sie einseitig nachzurüsten.
 
 ## Überblick
 
@@ -73,7 +74,11 @@ an eine bestimmte Backend-Instanz gebunden sind.
 ```
 Inventarsystem/
   App/            Einstiegspunkt, RootView (Onboarding/Login/App-Shell), AppShellView
-                  (adaptive Navigation: TabBar+„Mehr" auf iPhone, Sidebar auf iPad/Mac)
+                  (adaptive Navigation: TabBar+„Mehr" auf iPhone, Sidebar auf iPad/Mac; Tabs:
+                  Dashboard/Inventar/Ausleihe/Kalender/Einstellungen – Aktivitäten, Artikel,
+                  Lager, Benutzer, Rollen, Gruppen und Organisationen leben unter
+                  Einstellungen, Profil ist nur über den Personen-Button auf dem Dashboard
+                  erreichbar, kein eigener Tab)
   Core/
     Networking/   APIClient (URLSession/async-await), APIError (deutsche Backend-Fehlermeldungen),
                   Pagination, Bild-Cache
@@ -107,6 +112,14 @@ vorkonfiguriert. Neue/angepasste Profile lassen sich direkt mit Beispielfotos ka
 hinzufügen, erkannten Text und daraus abgeleitete Kandidaten-Nummer(n) sofort sehen, Muster
 anpassen, bis das Ergebnis stimmt – die App zeigt bei mehreren passenden Kandidaten immer eine
 Auswahl zur Bestätigung, nie eine automatische, unbestätigte Übernahme.
+
+**Profile werden im Backend gespeichert** (`sticker_profiles`-Tabelle, `GET/POST/PUT/DELETE
+/api/v1/sticker-profiles`) und sind damit für alle Geräte und Nutzer gleich – ein einmal
+kalibriertes Profil muss nicht auf jedem Gerät neu angelegt werden. Lesen ist für jeden
+angemeldeten Nutzer möglich (die Kamera-Erkennung muss für alle funktionieren); Anlegen,
+Bearbeiten und Löschen erfordert die neue Berechtigung `settings.manage_sticker_profiles`. Die
+Beispielfotos zur Kalibrierung selbst bleiben bewusst lokal auf dem jeweiligen Gerät (kein
+Upload) – sie dienen nur zum Testen der Muster, nicht der eigentlichen Erkennung.
 
 **Hinweis zu den Testfotos:** Die im ursprünglichen Auftrag beschriebenen 7 Referenzfotos der
 echten EjB-Aufkleber lagen auf diesem Rechner nicht vor (wurde ausführlich geprüft – Projekt,
@@ -200,9 +213,3 @@ Auftrag nicht verändert werden soll):
 4. Erwägenswert: das generierte OpenAPI-JSON (`GET /api/v1/docs-json`) im Repository versionieren,
    damit Client-Arbeit künftig gegen einen fixierten Vertrag statt gegen einen laufenden Server
    abgeglichen werden kann.
-
-Weitere kleinere, rein clientseitige Einschränkung: Das automatische „Mehr"-Tab von SwiftUI/UIKit
-(erscheint, sobald mehr als 4 Tabs sichtbar sind – hier ab „Ausleihe") übernimmt sein Label
-(„More") von der System-/Simulator-Sprache, nicht von der App-eigenen deutschen Lokalisierung, da
-es sich um ein vom Betriebssystem automatisch erzeugtes Element handelt. Auf einem Gerät mit
-Deutsch als Systemsprache zeigt es korrekt „Mehr" an.

@@ -1,6 +1,10 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { GroupSource, PrismaClient } from '../generated/prisma/client';
+import {
+  GroupSource,
+  PrismaClient,
+  StickerNumberFormat,
+} from '../generated/prisma/client';
 import * as argon2 from 'argon2';
 import { ALL_PERMISSIONS } from '../common/constants/permissions';
 
@@ -438,6 +442,35 @@ async function main() {
       source: GroupSource.manual,
     },
   });
+
+  console.log('Seeding sticker profiles...');
+  const existingDefaultStickerProfile = await prisma.stickerProfile.findFirst(
+    { where: { name: 'EJB Standard' } },
+  );
+  if (!existingDefaultStickerProfile) {
+    await prisma.stickerProfile.create({
+      data: {
+        name: 'EJB Standard',
+        praefix: 'EJB',
+        trenner: ' ',
+        ankerBegriffe: ['ejbe.de', 'Jugendwerk', 'Bernhausen', 'EjB'],
+        extraktionsMuster: [
+          'EJB\\s*([0-9]{2,6})',
+          'Nr[:.]?\\s*([0-9]{2,6})',
+          '\\b([0-9]{3,6})\\b',
+        ],
+        ausschlussMuster: [
+          '\\b[A-Z]{2,4}\\s?\\d\\b',
+          '\\b\\d+\\s?m\\b',
+          'Blackmagic\\s*design',
+          'LD\\s*Systems',
+          'KLOTZ\\s*LY225T',
+        ],
+        zahlenFormat: StickerNumberFormat.verbatim,
+        isDefault: true,
+      },
+    });
+  }
 
   console.log('Seed completed.');
   console.log(`Admin login: ${adminEmail} / ${adminPassword}`);

@@ -29,6 +29,7 @@ import { AttachmentsModule } from './attachments/attachments.module';
 import { BackupModule } from './backup/backup.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SettingsModule } from './settings/settings.module';
+import { StickerProfilesModule } from './sticker-profiles/sticker-profiles.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -83,6 +84,7 @@ import { AppService } from './app.service';
     BackupModule,
     NotificationsModule,
     SettingsModule,
+    StickerProfilesModule,
   ],
   controllers: [AppController],
   providers: [

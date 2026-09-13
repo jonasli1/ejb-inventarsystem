@@ -67,7 +67,7 @@ struct StickerProfileMatcherTests {
 
     @Test func fallsBackToDefaultProfileWhenNoAnchorsMatchAmongSeveral() {
         var otherProfile = StickerProfile.ejbStandard
-        otherProfile.id = UUID()
+        otherProfile.id = UUID().uuidString
         otherProfile.name = "Anderes Profil"
         otherProfile.praefix = "XYZ"
         otherProfile.ankerBegriffe = ["ganzAndereFirma"]
@@ -79,7 +79,7 @@ struct StickerProfileMatcherTests {
 
     @Test func picksTheHighestScoringProfileWhenAnchorsMatch() {
         var otherProfile = StickerProfile.ejbStandard
-        otherProfile.id = UUID()
+        otherProfile.id = UUID().uuidString
         otherProfile.name = "Anderes Profil"
         otherProfile.praefix = "XYZ"
         otherProfile.ankerBegriffe = ["ganzAndereFirma"]
@@ -91,12 +91,12 @@ struct StickerProfileMatcherTests {
 
     @Test func returnsNilOnAGenuineTieBetweenScoringProfiles() {
         var profileA = StickerProfile.ejbStandard
-        profileA.id = UUID()
+        profileA.id = UUID().uuidString
         profileA.name = "Profil A"
         profileA.ankerBegriffe = ["Jugendwerk"]
 
         var profileB = StickerProfile.ejbStandard
-        profileB.id = UUID()
+        profileB.id = UUID().uuidString
         profileB.name = "Profil B"
         profileB.isDefault = false
         profileB.ankerBegriffe = ["Jugendwerk"]

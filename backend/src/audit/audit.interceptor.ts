@@ -30,6 +30,7 @@ const MODEL_ACCESSOR: Record<AuditEntityType, string> = {
   InventoryItem: 'inventoryItem',
   LoanBlackoutPeriod: 'loanBlackoutPeriod',
   LoanTemplate: 'loanTemplate',
+  StickerProfile: 'stickerProfile',
 };
 
 const ACTION_BY_METHOD: Record<string, AuditAction> = {
@@ -176,4 +177,5 @@ const ENTITY_LABEL: Record<AuditEntityType, string> = {
   InventoryItem: 'Inventarobjekt',
   LoanBlackoutPeriod: 'Ausleihsperre',
   LoanTemplate: 'Ausleihe-Vorlage',
+  StickerProfile: 'Sticker-Profil',
 };

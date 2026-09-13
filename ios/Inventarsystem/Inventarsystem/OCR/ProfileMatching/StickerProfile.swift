@@ -4,7 +4,12 @@ import Foundation
 /// recognition pipeline is deliberately not hardcoded to one sticker design — `ankerBegriffe`
 /// decide which profile a scanned image belongs to, and `extraktionsMuster`/`ausschlussMuster`/
 /// `zahlenFormat` decide how the inventory number is pulled out of the recognized text.
-nonisolated struct StickerProfile: Codable, Identifiable, Sendable, Hashable {
+///
+/// The matching rules are stored server-side (`StickerProfileService`/`GET /sticker-profiles`)
+/// so a profile calibrated once is shared across every device and user — only `beispielbilder`
+/// (example calibration photos) stay local to each device, since they're just a testing aid, not
+/// part of the actual matching logic.
+nonisolated struct StickerProfile: Decodable, Identifiable, Sendable, Hashable {
     enum NumberFormat: String, Codable, Sendable {
         /// Keep the captured digits exactly as recognized, including leading zeros.
         case verbatim
@@ -14,7 +19,7 @@ nonisolated struct StickerProfile: Codable, Identifiable, Sendable, Hashable {
         case zeroPadded
     }
 
-    var id: UUID
+    var id: String
     var name: String
     var praefix: String
     var trenner: String
@@ -31,15 +36,20 @@ nonisolated struct StickerProfile: Codable, Identifiable, Sendable, Hashable {
     var padLength: Int
     /// Used when no profile's anchors match at all (e.g. a plain label with no branding text).
     var isDefault: Bool
-    /// Local filenames of example photos saved for this profile during setup/calibration.
+    /// Local filenames of example photos saved for this profile during setup/calibration on
+    /// THIS device — never part of the server payload (see `CodingKeys`).
     var beispielbilder: [String]
 
+    private enum CodingKeys: String, CodingKey {
+        case id, name, praefix, trenner, ankerBegriffe, extraktionsMuster, ausschlussMuster, zahlenFormat, padLength, isDefault
+    }
+
     init(
-        id: UUID = UUID(),
+        id: String = UUID().uuidString,
         name: String,
         praefix: String,
         trenner: String = " ",
-        ankerBegriffe: [String],
+        ankerBegriffe: [String] = [],
         extraktionsMuster: [String],
         ausschlussMuster: [String] = [],
         zahlenFormat: NumberFormat = .verbatim,
@@ -60,9 +70,23 @@ nonisolated struct StickerProfile: Codable, Identifiable, Sendable, Hashable {
         self.beispielbilder = beispielbilder
     }
 
-    /// The seeded default profile, derived from the physical EjB stickers this feature was
-    /// specified against: a red sticker with the number in a white field, a silver/copper
-    /// "Nr: …" label, and a white label already printed "EJB ####".
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        praefix = try container.decode(String.self, forKey: .praefix)
+        trenner = try container.decode(String.self, forKey: .trenner)
+        ankerBegriffe = try container.decodeIfPresent([String].self, forKey: .ankerBegriffe) ?? []
+        extraktionsMuster = try container.decode([String].self, forKey: .extraktionsMuster)
+        ausschlussMuster = try container.decodeIfPresent([String].self, forKey: .ausschlussMuster) ?? []
+        zahlenFormat = try container.decodeIfPresent(NumberFormat.self, forKey: .zahlenFormat) ?? .verbatim
+        padLength = try container.decodeIfPresent(Int.self, forKey: .padLength) ?? 0
+        isDefault = try container.decodeIfPresent(Bool.self, forKey: .isDefault) ?? false
+        beispielbilder = []
+    }
+
+    /// A fixture matching the backend's seeded default profile — used by SwiftUI Previews and
+    /// by the pure-logic unit tests (`StickerProfileMatcherTests`), which need no live backend.
     static let ejbStandard = StickerProfile(
         name: "EJB Standard",
         praefix: "EJB",

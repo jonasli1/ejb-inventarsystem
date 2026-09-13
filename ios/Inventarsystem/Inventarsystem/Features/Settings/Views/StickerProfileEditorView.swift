@@ -100,11 +100,18 @@ struct StickerProfileEditorView: View {
                 Button("Abbrechen") { dismiss() }
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Speichern") {
-                    viewModel.save()
-                    dismiss()
+                if viewModel.isSaving {
+                    ProgressView()
+                } else {
+                    Button("Speichern") {
+                        Task {
+                            if await viewModel.save() {
+                                dismiss()
+                            }
+                        }
+                    }
+                    .disabled(!viewModel.isValid)
                 }
-                .disabled(!viewModel.isValid)
             }
         }
         .errorAlert($viewModel.errorMessage)

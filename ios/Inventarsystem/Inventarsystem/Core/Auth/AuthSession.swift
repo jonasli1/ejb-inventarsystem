@@ -56,6 +56,7 @@ final class AuthSession {
         do {
             profile = try await LoginService.me()
             status = .authenticated
+            Task { await StickerProfileStore.shared.refresh() }
         } catch {
             // A stored token that no longer works (revoked, backend reset, ...) — fall back to
             // the login screen rather than getting stuck.
@@ -89,6 +90,7 @@ final class AuthSession {
         do {
             profile = try await LoginService.me()
             status = .authenticated
+            Task { await StickerProfileStore.shared.refresh() }
         } catch {
             KeychainTokenStore.clear()
             throw error

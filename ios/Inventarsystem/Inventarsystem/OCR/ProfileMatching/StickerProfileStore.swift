@@ -1,75 +1,40 @@
 import Foundation
 import Observation
 
-/// Local JSON persistence for sticker profiles — seeds the "EJB Standard" profile on first
-/// launch. This does file I/O, so unlike `StickerProfile`/`StickerProfileMatcher` it isn't part
-/// of the pure-logic layer, but it's still profile-domain code and has no Vision/UIKit
-/// dependency either.
+/// In-memory cache of the server-stored sticker profiles (`GET /sticker-profiles`) — profiles
+/// are shared across every device/user (see `StickerProfileService`), refreshed at login and
+/// whenever Settings' calibration UI creates/edits/deletes one. Kept as a single shared store,
+/// rather than every call site fetching independently, so the OCR scan button never blocks on a
+/// network round-trip at the exact moment of scanning — profiles are expected to already be
+/// loaded by then.
 @MainActor
 @Observable
 final class StickerProfileStore {
     private(set) var profiles: [StickerProfile] = []
+    private(set) var isLoading = false
+    var errorMessage: String?
 
-    private let fileURL: URL
+    private let service: StickerProfileServicing
 
     static let shared = StickerProfileStore()
 
-    init(fileURL: URL? = nil) {
-        self.fileURL = fileURL ?? Self.defaultFileURL()
-        load()
+    init(service: StickerProfileServicing = StickerProfileService()) {
+        self.service = service
     }
 
-    private static func defaultFileURL() -> URL {
-        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent("stickerProfiles.json")
-    }
-
-    func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([StickerProfile].self, from: data),
-              !decoded.isEmpty
-        else {
-            profiles = [.ejbStandard]
-            save()
-            return
-        }
-        profiles = decoded
-    }
-
-    func save() {
-        guard let data = try? JSONEncoder().encode(profiles) else { return }
-        try? data.write(to: fileURL, options: .atomic)
-    }
-
-    func upsert(_ profile: StickerProfile) {
-        if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
-            profiles[index] = profile
-        } else {
-            profiles.append(profile)
-        }
-        save()
-    }
-
-    func delete(_ profile: StickerProfile) {
-        profiles.removeAll { $0.id == profile.id }
-        if profiles.isEmpty { profiles = [.ejbStandard] }
-        save()
-    }
-
-    /// Exports all profiles as pretty-printed JSON for sharing/backup.
-    func exportJSON() -> Data? {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try? encoder.encode(profiles)
-    }
-
-    /// Imports profiles from previously-exported JSON, merging by id (existing profiles with a
-    /// matching id are replaced, new ones are appended).
-    func importJSON(_ data: Data) throws {
-        let imported = try JSONDecoder().decode([StickerProfile].self, from: data)
-        for profile in imported {
-            upsert(profile)
+    /// Re-fetches from the backend and re-attaches each profile's local-only example-image
+    /// filenames (never part of the server payload — see `StickerProfile.beispielbilder`).
+    func refresh() async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            var fetched = try await service.fetchAll()
+            for index in fetched.indices {
+                fetched[index].beispielbilder = LocalStickerExampleRegistry.filenames(for: fetched[index].id)
+            }
+            profiles = fetched
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "Sticker-Profile konnten nicht geladen werden."
         }
     }
 }

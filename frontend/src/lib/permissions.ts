@@ -56,6 +56,7 @@ export const PERMISSIONS = {
 
   // Einstellungen & Berichte
   SETTINGS_MANAGE: 'settings.manage',
+  SETTINGS_MANAGE_STICKER_PROFILES: 'settings.manage_sticker_profiles',
   REPORTS_VIEW: 'reports.view',
 
   // Protokoll

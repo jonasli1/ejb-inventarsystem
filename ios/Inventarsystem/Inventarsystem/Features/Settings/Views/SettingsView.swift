@@ -1,9 +1,12 @@
 import SwiftUI
 
-/// Root Settings menu. `Allgemein`/`E-Mail`/`Backup` mirror the frontend's admin-only settings
-/// pages (all gated by the single `settings.manage` permission); `Sticker-Profile` and the
+/// Root Settings menu. Beyond the admin-only `Allgemein`/`E-Mail`/`Backup` pages (gated by
+/// `settings.manage`, mirroring the frontend), this is also where the sections that used to be
+/// their own bottom tabs now live — Aktivitäten, Artikel, Lager, Benutzer, Rollen, Gruppen und
+/// Organisationen — each still gated by its own `*.read` permission. `Sticker-Profile` and the
 /// server-address change are iOS-only device/account settings with no frontend equivalent, so
-/// they're always available to any signed-in user.
+/// they're always available to any signed-in user (editing a sticker profile is separately
+/// gated inside `StickerProfilesView` by `settings.manage_sticker_profiles`).
 struct SettingsView: View {
     @Environment(AuthSession.self) private var session
     @State private var showChangeServer = false
@@ -13,6 +16,58 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    if session.hasPermission("inventory.read") {
+                        NavigationLink {
+                            ActivityListView()
+                        } label: {
+                            Label("Aktivitäten", systemImage: "clock.arrow.circlepath")
+                        }
+                    }
+                    if session.hasPermission("articles.read") {
+                        NavigationLink {
+                            ArticlesListView()
+                        } label: {
+                            Label("Artikel", systemImage: "tag")
+                        }
+                    }
+                    if session.hasPermission("locations.read") {
+                        NavigationLink {
+                            LocationsListView()
+                        } label: {
+                            Label("Lager", systemImage: "building.2")
+                        }
+                    }
+                    if session.hasPermission("users.read") {
+                        NavigationLink {
+                            UsersListView()
+                        } label: {
+                            Label("Benutzer", systemImage: "person.2")
+                        }
+                    }
+                    if session.hasPermission("roles.read") {
+                        NavigationLink {
+                            RolesListView()
+                        } label: {
+                            Label("Rollen", systemImage: "checkmark.shield")
+                        }
+                    }
+                    if session.hasPermission("groups.read") {
+                        NavigationLink {
+                            GroupsListView()
+                        } label: {
+                            Label("Gruppen", systemImage: "person.3")
+                        }
+                    }
+                    if session.hasPermission("organizations.read") {
+                        NavigationLink {
+                            OrganizationsListView()
+                        } label: {
+                            Label("Organisationen", systemImage: "building.2.crop.circle")
+                        }
+                    }
+                }
+
                 if canManageSettings {
                     Section {
                         NavigationLink {
