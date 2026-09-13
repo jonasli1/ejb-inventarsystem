@@ -66,12 +66,14 @@ export class CreateInventoryItemDto {
   notes?: string;
 
   @ApiPropertyOptional({
-    description: 'Purchase price in the local currency, e.g. 149.99',
+    description:
+      'Purchase price in the local currency, e.g. 149.99. On update, send `null` to clear an already-set price.',
+    nullable: true,
   })
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  purchasePrice?: number;
+  purchasePrice?: number | null;
 
   @ApiPropertyOptional({
     description:

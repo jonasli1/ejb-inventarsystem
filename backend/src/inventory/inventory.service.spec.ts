@@ -425,6 +425,15 @@ describe('InventoryService', () => {
       expect(result.nextDguvV3Check).toBeNull();
     });
 
+    it('clears purchasePrice when explicitly set to null', async () => {
+      const result = await service.update(
+        'item-1',
+        { purchasePrice: null },
+        manageUser,
+      );
+      expect(result.purchasePrice).toBeNull();
+    });
+
     it('allows changing both the inventory number and other fields when the actor has both permissions', async () => {
       const result = await service.update(
         'item-1',

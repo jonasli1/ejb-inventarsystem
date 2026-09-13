@@ -1384,15 +1384,20 @@ describe('Inventarsystem API (e2e)', () => {
         '2025-06-01T00:00:00.000Z',
       );
 
-      // Explicit null clears an already-set date - distinct from omitting
-      // the field above, which leaves it untouched.
+      // Explicit null clears an already-set date/price - distinct from
+      // omitting the field above, which leaves it untouched.
       const cleared = await request(app.getHttpServer())
         .put(`/api/v1/inventory/${explicit.body.id}`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ purchaseDate: null, nextDguvV3Check: null })
+        .send({
+          purchaseDate: null,
+          nextDguvV3Check: null,
+          purchasePrice: null,
+        })
         .expect(200);
       expect(cleared.body.purchaseDate).toBeNull();
       expect(cleared.body.nextDguvV3Check).toBeNull();
+      expect(cleared.body.purchasePrice).toBeNull();
     });
 
     it('filters inventory by a partial, case-insensitive inventory number match', async () => {
