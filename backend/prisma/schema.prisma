@@ -29,6 +29,7 @@ enum InventoryStatus {
   defect
   retired
   installed
+  notLoanable
 }
 
 enum StockMovementType {
