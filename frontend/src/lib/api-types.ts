@@ -136,6 +136,8 @@ export interface Article {
   imageUrl: string | null;
   attributes: Record<string, unknown> | null;
   stock: ArticleStock;
+  /** When true, units of this article may be checked out by quantity (auto-assigned) instead of only picking specific inventory items. */
+  loanableByQuantity: boolean;
 }
 
 export interface Location {
@@ -158,7 +160,8 @@ export type InventoryStatus =
   | 'maintenance'
   | 'defect'
   | 'retired'
-  | 'installed';
+  | 'installed'
+  | 'notLoanable';
 
 export interface InventoryItem {
   id: string;
@@ -178,6 +181,8 @@ export interface InventoryItem {
   notes: string | null;
   /** Set when this item is attached as accessory to another item. */
   parentItemId: string | null;
+  /** Only meaningful while parentItemId is set: whether this accessory may also be checked out on its own. */
+  separatelyLoanable: boolean;
   article: Article;
   location: Location;
   room: Room;
@@ -261,6 +266,8 @@ export interface LoanItem {
   id: string;
   loanId: string;
   inventoryItemId: string;
+  /** Display/export order within the loan, user-adjustable. */
+  sortOrder: number;
   checkedOutCondition: number | null;
   returnedCondition: number | null;
   returnedAt: string | null;
@@ -272,6 +279,8 @@ export interface LoanItem {
 
 export interface Loan {
   id: string;
+  /** The loan's primary display name, shown ahead of the borrower everywhere the loan is listed/exported. */
+  subject: string;
   borrowerPersonId: string | null;
   borrowerName: string | null;
   borrowerStreet: string | null;
@@ -292,6 +301,7 @@ export interface Loan {
 
 export interface CalendarLoanEntry {
   id: string;
+  subject: string;
   borrowerName: string | null;
   borrowerPersonId: string | null;
   status: LoanStatus;

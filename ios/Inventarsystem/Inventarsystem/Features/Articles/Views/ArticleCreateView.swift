@@ -22,6 +22,7 @@ struct ArticleCreateView: View {
                     }
                     TextField("Hersteller", text: $viewModel.manufacturer)
                     TextField("Maßeinheit", text: $viewModel.unitOfMeasure)
+                    Toggle("Nach Anzahl ausleihbar", isOn: $viewModel.loanableByQuantity)
                 }
 
                 Section("Beschreibung") {

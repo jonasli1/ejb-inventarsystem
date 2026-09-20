@@ -53,7 +53,7 @@ struct LoanCalendarView: View {
                             NavigationLink(value: entry.id) {
                                 HStack {
                                     VStack(alignment: .leading) {
-                                        Text(entry.borrowerName ?? "Unbekannt")
+                                        Text(entry.subject)
                                         Text("\(entry.itemCount) Objekt(e)").font(.caption).foregroundStyle(.secondary)
                                     }
                                     Spacer()

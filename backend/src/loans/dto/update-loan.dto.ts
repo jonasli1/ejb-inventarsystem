@@ -5,16 +5,37 @@ import {
   IsArray,
   IsDateString,
   IsEmail,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 
 export class UpdateLoanItemDto {
-  @ApiPropertyOptional({ description: 'Specific inventory item.' })
+  @ApiPropertyOptional({
+    description:
+      'Specific inventory item to keep/add. Mutually exclusive with articleId.',
+  })
+  @IsOptional()
   @IsUUID()
-  inventoryItemId: string;
+  inventoryItemId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Article to keep/resolve a given quantity of units for (for articles with loanableByQuantity). Mutually exclusive with inventoryItemId.',
+  })
+  @IsOptional()
+  @IsUUID()
+  articleId?: string;
+
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  quantity?: number = 1;
 }
 
 // All fields stay optional here (unlike CreateLoanDto): this is a partial
@@ -22,6 +43,14 @@ export class UpdateLoanItemDto {
 // re-supplying every field. Editing a not-yet-issued loan resets its status
 // back to "requested" - see LoansService.update.
 export class UpdateLoanDto {
+  @ApiPropertyOptional({
+    description: "The loan's primary display name.",
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  subject?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()

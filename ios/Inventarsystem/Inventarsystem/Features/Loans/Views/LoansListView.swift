@@ -86,10 +86,13 @@ private struct LoanRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(loan.borrowerDisplayName).font(.body.weight(.medium))
+                Text(loan.subject).font(.body.weight(.medium))
                 Spacer()
                 StatusBadge(status: loan.status)
             }
+            Text(loan.borrowerDisplayName)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             if let dueDate = loan.dueDate {
                 Text("Rückgabe bis \(dueDate.formatted(date: .abbreviated, time: .omitted))")
                     .font(.caption)

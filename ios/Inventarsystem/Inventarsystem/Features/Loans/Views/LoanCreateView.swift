@@ -22,6 +22,10 @@ struct LoanCreateView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    TextField("Betreff", text: $viewModel.subject)
+                }
+
                 Section("Ausleiher") {
                     TextField("Name", text: $viewModel.borrowerName)
                     TextField("Straße", text: $viewModel.borrowerStreet)
@@ -39,7 +43,7 @@ struct LoanCreateView: View {
                 }
 
                 Section("Objekte") {
-                    ForEach(viewModel.lines) { line in
+                    ForEach(Array(viewModel.lines.enumerated()), id: \.element.id) { index, line in
                         HStack {
                             if line.isAccessory {
                                 Image(systemName: "arrow.turn.down.right").foregroundStyle(.secondary).font(.caption)
@@ -59,10 +63,25 @@ struct LoanCreateView: View {
                                 Text(line.displaySubtitle).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
+                            if !line.isAccessory {
+                                Button {
+                                    viewModel.moveLine(at: index, direction: -1)
+                                } label: {
+                                    Image(systemName: "chevron.up")
+                                }
+                                .disabled(!viewModel.canMoveLine(at: index, direction: -1))
+                                Button {
+                                    viewModel.moveLine(at: index, direction: 1)
+                                } label: {
+                                    Image(systemName: "chevron.down")
+                                }
+                                .disabled(!viewModel.canMoveLine(at: index, direction: 1))
+                            }
                             Button(role: .destructive) { viewModel.removeLine(line) } label: {
                                 Image(systemName: "minus.circle")
                             }
                         }
+                        .buttonStyle(.borderless)
                     }
                     Button { showItemPicker = true } label: {
                         Label("Bestimmtes Objekt hinzufügen", systemImage: "plus")
@@ -160,7 +179,8 @@ struct LoanCreateView: View {
                     AsyncSearchPicker<ArticleListItem>(
                         placeholder: "Artikel suchen",
                         search: { query in
-                            (try? await ArticleService().search(query: query, categoryId: nil, page: 1, pageSize: 20).items) ?? []
+                            let items = (try? await ArticleService().search(query: query, categoryId: nil, page: 1, pageSize: 20).items) ?? []
+                            return items.filter { $0.article.loanableByQuantity }
                         },
                         onSelect: { article in
                             showArticlePicker = false

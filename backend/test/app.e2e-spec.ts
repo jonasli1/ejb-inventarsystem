@@ -427,7 +427,7 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Loan Test Cable' })
+        .send({ name: 'Loan Test Cable', loanableByQuantity: true })
         .expect(201);
 
       for (let i = 0; i < 3; i++) {
@@ -449,6 +449,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${token}`)
         .send({
+          subject: 'E2E Loan',
           borrowerName: 'E2E Borrower',
           ...LOAN_BORROWER_FIELDS,
           checkoutDate,
@@ -548,7 +549,7 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Delete-Reverts Article' })
+        .send({ name: 'Delete-Reverts Article', loanableByQuantity: true })
         .expect(201);
       await request(app.getHttpServer())
         .post('/api/v1/inventory')
@@ -566,6 +567,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${token}`)
         .send({
+          subject: 'Delete-Reverts Loan',
           borrowerName: 'Delete-Reverts Borrower',
           ...LOAN_BORROWER_FIELDS,
           items: [{ articleId: article.body.id, quantity: 1 }],
@@ -637,7 +639,7 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Overbook Article' })
+        .send({ name: 'Overbook Article', loanableByQuantity: true })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -656,6 +658,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${token}`)
         .send({
+          subject: 'Greedy Loan',
           borrowerName: 'Greedy Borrower',
           ...LOAN_BORROWER_FIELDS,
           items: [{ articleId: article.body.id, quantity: 5 }],
@@ -1035,7 +1038,7 @@ describe('Inventarsystem API (e2e)', () => {
       const article = await request(app.getHttpServer())
         .post('/api/v1/articles')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ name: 'Loan Viewer Article' })
+        .send({ name: 'Loan Viewer Article', loanableByQuantity: true })
         .expect(201);
       await request(app.getHttpServer())
         .post('/api/v1/inventory')
@@ -1053,6 +1056,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
+          subject: 'Read Only Test Loan',
           borrowerName: 'Read Only Test',
           ...LOAN_BORROWER_FIELDS,
           items: [{ articleId: article.body.id, quantity: 1 }],
@@ -1622,6 +1626,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${token}`)
         .send({
+          subject: 'Export Loan',
           borrowerName: 'Export Borrower',
           ...LOAN_BORROWER_FIELDS,
           items: [{ inventoryItemId }],
@@ -2091,6 +2096,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${requesterToken}`)
         .send({
+          subject: 'Installed Test Loan',
           borrowerName: 'Installed Test',
           ...borrowerFields,
           items: [{ inventoryItemId: itemA.id }],
@@ -2111,6 +2117,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${requesterToken}`)
         .send({
+          subject: 'Workflow Loan',
           borrowerName: 'Workflow Borrower',
           ...borrowerFields,
           items: [{ inventoryItemId: itemA.id }],
@@ -2250,6 +2257,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${requesterToken}`)
         .send({
+          subject: 'Multi-Org Loan',
           borrowerName: 'Multi-Org Borrower',
           ...borrowerFields,
           items: [
@@ -2365,6 +2373,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${administerToken}`)
         .send({
+          subject: 'Administer Direct Loan',
           borrowerName: 'Administer Direct',
           ...borrowerFields,
           items: [{ inventoryItemId: itemOne.id }],
@@ -2390,6 +2399,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${administerToken}`)
         .send({
+          subject: 'Administer Forced Requested Loan',
           borrowerName: 'Administer Forced Requested',
           ...borrowerFields,
           forceRequested: true,
@@ -2404,6 +2414,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${managerBToken}`)
         .send({
+          subject: 'Cross-Org Attempt Loan',
           borrowerName: 'Cross-Org Attempt',
           ...borrowerFields,
           items: [{ inventoryItemId: itemA.id }],
@@ -2462,6 +2473,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${requesterToken}`)
         .send({
+          subject: 'Editable Loan Subject',
           borrowerName: 'Editable Loan',
           ...borrowerFields,
           items: [{ inventoryItemId: editItem.id }],
@@ -2578,6 +2590,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${requesterToken}`)
         .send({
+          subject: 'Reset On Edit Loan',
           borrowerName: 'Reset On Edit',
           ...borrowerFields,
           items: [{ inventoryItemId: resetItem.id }],
@@ -2606,6 +2619,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${administerToken}`)
         .send({
+          subject: 'Future Loan 1',
           borrowerName: 'Future Borrower 1',
           ...borrowerFields,
           checkoutDate: '2030-01-10T00:00:00.000Z',
@@ -2620,6 +2634,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${administerToken}`)
         .send({
+          subject: 'Future Loan 2 (conflict)',
           borrowerName: 'Future Borrower 2 (conflict)',
           ...borrowerFields,
           checkoutDate: '2030-01-15T00:00:00.000Z',
@@ -2633,6 +2648,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${administerToken}`)
         .send({
+          subject: 'Future Loan 3 (no conflict)',
           borrowerName: 'Future Borrower 3 (no conflict)',
           ...borrowerFields,
           checkoutDate: '2030-01-21T00:00:00.000Z',
@@ -3568,6 +3584,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${token}`)
         .send({
+          subject: 'Blackout Loan (blocked)',
           borrowerName: 'Blackout Borrower',
           ...LOAN_BORROWER_FIELDS,
           checkoutDate: '2026-09-05T00:00:00.000Z',
@@ -3585,6 +3602,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${token}`)
         .send({
+          subject: 'Blackout Loan (after removal)',
           borrowerName: 'Blackout Borrower',
           ...LOAN_BORROWER_FIELDS,
           checkoutDate: '2026-09-05T00:00:00.000Z',
@@ -3714,6 +3732,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${token}`)
         .send({
+          subject: 'Save As Template Loan',
           borrowerName: 'Save As Template Borrower',
           ...LOAN_BORROWER_FIELDS,
           items: [{ inventoryItemId: item.id }],
@@ -3914,6 +3933,7 @@ describe('Inventarsystem API (e2e)', () => {
           .post('/api/v1/loans')
           .set('Authorization', `Bearer ${token}`)
           .send({
+            subject: 'Movement Link Loan',
             borrowerName: 'Movement Link Borrower',
             ...LOAN_BORROWER_FIELDS,
             items: [{ inventoryItemId: item.id }],
@@ -4527,6 +4547,7 @@ describe('Inventarsystem API (e2e)', () => {
         .post('/api/v1/loans')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
+          subject: 'Delete Loan Subject',
           borrowerName: 'Delete Loan Borrower',
           ...LOAN_BORROWER_FIELDS,
           items: [{ inventoryItemId: item.body.id }],

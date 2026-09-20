@@ -178,12 +178,26 @@ export function InventoryDetailModal({
     onError: (err) => toast.push(getApiErrorMessage(err), 'error'),
   });
 
+  const [addSeparatelyLoanable, setAddSeparatelyLoanable] = useState(false);
   const addAccessoryMutation = useMutation({
     mutationFn: async (candidate: AccessoryCandidate) =>
-      api.put(`/inventory/${item.id}/accessory`, { accessoryItemId: candidate.id }),
+      api.put(`/inventory/${item.id}/accessory`, {
+        accessoryItemId: candidate.id,
+        separatelyLoanable: addSeparatelyLoanable,
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['inventory', item.id, 'detail'] });
       toast.push('Zubehör wurde zugeordnet.');
+      setAddSeparatelyLoanable(false);
+    },
+    onError: (err) => toast.push(getApiErrorMessage(err), 'error'),
+  });
+
+  const setAccessoryLoanableMutation = useMutation({
+    mutationFn: async ({ accessoryId, separatelyLoanable }: { accessoryId: string; separatelyLoanable: boolean }) =>
+      api.put(`/inventory/${accessoryId}`, { separatelyLoanable }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['inventory', item.id, 'detail'] });
     },
     onError: (err) => toast.push(getApiErrorMessage(err), 'error'),
   });
@@ -457,7 +471,17 @@ export function InventoryDetailModal({
         {tab === 'accessories' && (
           <div className="flex flex-col gap-4">
             {canUpdate && (
-              <AccessorySearchSelect itemId={item.id} onSelect={(c) => addAccessoryMutation.mutate(c)} />
+              <div className="flex flex-col gap-2">
+                <AccessorySearchSelect itemId={item.id} onSelect={(c) => addAccessoryMutation.mutate(c)} />
+                <label className="flex items-center gap-2 text-xs text-muted">
+                  <input
+                    type="checkbox"
+                    checked={addSeparatelyLoanable}
+                    onChange={(e) => setAddSeparatelyLoanable(e.target.checked)}
+                  />
+                  Neues Zubehör kann auch einzeln ausgeliehen werden
+                </label>
+              </div>
             )}
             {!detail ? (
               <div className="flex justify-center py-4">
@@ -480,7 +504,23 @@ export function InventoryDetailModal({
                         {a.article.name}{' '}
                         {a.inventoryNumber && <span className="font-mono text-xs text-muted">{a.inventoryNumber}</span>}
                       </p>
-                      <InventoryStatusBadge status={a.status} />
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <InventoryStatusBadge status={a.status} />
+                        <label className="flex items-center gap-1.5 text-xs text-muted">
+                          <input
+                            type="checkbox"
+                            checked={a.separatelyLoanable}
+                            disabled={!canUpdate || setAccessoryLoanableMutation.isPending}
+                            onChange={(e) =>
+                              setAccessoryLoanableMutation.mutate({
+                                accessoryId: a.id,
+                                separatelyLoanable: e.target.checked,
+                              })
+                            }
+                          />
+                          Einzeln ausleihbar
+                        </label>
+                      </div>
                     </div>
                     {canUpdate && (
                       <button

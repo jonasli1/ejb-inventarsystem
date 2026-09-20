@@ -58,7 +58,10 @@ final class InventoryListViewModel {
 
     func refresh() async {
         if isGrouped {
-            await groupedList.refresh()
+            // Full reset to page 1 (not `groupedList.refresh()`, which would only reload
+            // whichever page infinite-scroll last appended) - matches the flat list's
+            // from-scratch pull-to-refresh semantics.
+            await groupedList.load(page: 1)
         } else {
             await flatList.refresh()
         }

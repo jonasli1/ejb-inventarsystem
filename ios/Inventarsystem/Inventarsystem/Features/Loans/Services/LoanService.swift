@@ -44,6 +44,9 @@ nonisolated struct ReturnLoanItemInput: Encodable, Sendable {
 /// Shared by both create and update — the backend's `UpdateLoanDto` mirrors `CreateLoanDto`
 /// (editing resets status to `requested` if the loan hasn't been issued yet, per the backend).
 nonisolated struct CreateLoanInput: Encodable, Sendable {
+    /// The loan's primary display name, shown ahead of the borrower everywhere the loan is
+    /// listed/exported.
+    var subject: String
     var borrowerPersonId: String?
     var borrowerName: String?
     var borrowerStreet: String
@@ -62,13 +65,14 @@ nonisolated struct CreateLoanInput: Encodable, Sendable {
     var saveAsTemplateName: String?
 
     private enum CodingKeys: String, CodingKey {
-        case borrowerPersonId, borrowerName, borrowerStreet, borrowerCity, borrowerEmail,
+        case subject, borrowerPersonId, borrowerName, borrowerStreet, borrowerCity, borrowerEmail,
              borrowerPhone, checkoutDate, dueDate, notes, forceRequested, items, saveAsTemplate
     }
     private struct SaveAsTemplate: Encodable { let name: String }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(subject, forKey: .subject)
         try container.encodeIfPresent(borrowerPersonId, forKey: .borrowerPersonId)
         try container.encodeIfPresent(borrowerName, forKey: .borrowerName)
         try container.encode(borrowerStreet, forKey: .borrowerStreet)

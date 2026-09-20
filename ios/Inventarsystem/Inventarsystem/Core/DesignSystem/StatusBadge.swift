@@ -35,6 +35,7 @@ extension InventoryStatus: BadgeStatus {
         case .defect: return .red
         case .retired: return .gray
         case .installed: return .purple
+        case .notLoanable: return .gray
         case .unknown: return .gray
         }
     }

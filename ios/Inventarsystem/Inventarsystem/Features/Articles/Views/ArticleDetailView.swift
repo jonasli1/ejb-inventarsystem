@@ -214,6 +214,7 @@ struct ArticleDetailView: View {
                 .textFieldStyle(.roundedBorder)
             TextField("Maßeinheit", text: $viewModel.editUnitOfMeasure)
                 .textFieldStyle(.roundedBorder)
+            Toggle("Nach Anzahl ausleihbar", isOn: $viewModel.editLoanableByQuantity)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Beschreibung").font(.footnote).foregroundStyle(.secondary)

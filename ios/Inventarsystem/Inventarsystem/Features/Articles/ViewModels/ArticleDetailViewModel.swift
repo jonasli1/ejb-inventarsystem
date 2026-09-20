@@ -23,6 +23,7 @@ final class ArticleDetailViewModel {
     var editCategoryId: String?
     var editUnitOfMeasure = ""
     var editManufacturer = ""
+    var editLoanableByQuantity = false
     private(set) var isSaving = false
     private(set) var isUploadingPhoto = false
 
@@ -77,6 +78,7 @@ final class ArticleDetailViewModel {
         editCategoryId = article.categoryId
         editUnitOfMeasure = article.unitOfMeasure ?? ""
         editManufacturer = article.manufacturer ?? ""
+        editLoanableByQuantity = article.loanableByQuantity
         isEditing = true
     }
 
@@ -96,7 +98,8 @@ final class ArticleDetailViewModel {
             aliases: editAliases.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },
             categoryId: editCategoryId,
             unitOfMeasure: editUnitOfMeasure,
-            manufacturer: editManufacturer
+            manufacturer: editManufacturer,
+            loanableByQuantity: editLoanableByQuantity
         )
         do {
             _ = try await articleService.update(id: articleId, input: input)

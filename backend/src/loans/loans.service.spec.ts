@@ -82,6 +82,12 @@ describe('LoansService', () => {
         // resolution don't need to stub this explicitly.
         findMany: jest.fn().mockResolvedValue([]),
       },
+      article: {
+        // Defaults to "loanable by quantity" so existing articleId+quantity
+        // tests don't need to stub this explicitly; tests of the gate itself
+        // override this per-case.
+        findFirst: jest.fn().mockResolvedValue({ loanableByQuantity: true }),
+      },
       loanItem: {
         findFirst: jest.fn().mockResolvedValue(null), // no scheduling conflict by default
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -255,6 +261,17 @@ describe('LoansService', () => {
           createUser,
         ),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects an articleId+quantity request for an article without loanableByQuantity', async () => {
+      prisma.article.findFirst.mockResolvedValue({ loanableByQuantity: false });
+      await expect(
+        service.create(
+          { ...dtoBase, items: [{ articleId: 'article-1', quantity: 1 }] },
+          createUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.inventoryItem.findMany).not.toHaveBeenCalled();
     });
 
     it('never picks an accessory item to fulfill an articleId+quantity request', async () => {
@@ -437,7 +454,7 @@ describe('LoansService', () => {
         }),
       );
       expect(prisma.tx.loanItem.create).toHaveBeenCalledWith({
-        data: { loanId: 'loan-1', inventoryItemId: 'item-2' },
+        data: { loanId: 'loan-1', inventoryItemId: 'item-2', sortOrder: 1 },
       });
     });
 
@@ -466,7 +483,7 @@ describe('LoansService', () => {
         }),
       );
       expect(prisma.tx.loanItem.create).toHaveBeenCalledWith({
-        data: { loanId: 'loan-1', inventoryItemId: 'item-1' },
+        data: { loanId: 'loan-1', inventoryItemId: 'item-1', sortOrder: 0 },
       });
       expect(groups.getLoanScopeForUser).not.toHaveBeenCalled();
     });
@@ -495,7 +512,7 @@ describe('LoansService', () => {
         }),
       );
       expect(prisma.tx.loanItem.create).toHaveBeenCalledWith({
-        data: { loanId: 'loan-1', inventoryItemId: 'item-1' },
+        data: { loanId: 'loan-1', inventoryItemId: 'item-1', sortOrder: 0 },
       });
     });
 
@@ -1221,6 +1238,171 @@ describe('LoansService', () => {
           administerUser,
         ),
       ).resolves.toBeDefined();
+    });
+
+    it('allows adding a new accessory whose main object is already in the loan and stays pinned', async () => {
+      prisma.loan.findFirst.mockResolvedValue(editableLoan); // has item-1 (main, no parent) already
+      prisma.inventoryItem.findMany.mockImplementation((args: any) => {
+        if (args?.where?.id?.in) {
+          // Up-front pinned-items consistency check.
+          return Promise.resolve([
+            { id: 'item-1', parentItemId: null, separatelyLoanable: false, inventoryNumber: 'MAIN-1' },
+            { id: 'acc-1', parentItemId: 'item-1', separatelyLoanable: false, inventoryNumber: 'ACC-1' },
+          ]);
+        }
+        return Promise.resolve([]); // resolveCheckoutItems' own accessory-bundling lookup
+      });
+      prisma.inventoryItem.findFirst.mockResolvedValue({
+        id: 'acc-1',
+        status: 'available',
+        parentItemId: 'item-1',
+        inventoryNumber: 'ACC-1',
+        separatelyLoanable: false,
+      });
+
+      await expect(
+        service.update(
+          'loan-1',
+          { items: [{ inventoryItemId: 'item-1' }, { inventoryItemId: 'acc-1' }] },
+          administerUser,
+        ),
+      ).resolves.toBeDefined();
+
+      expect(prisma.tx.loanItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ inventoryItemId: 'acc-1' }),
+        }),
+      );
+      expect(prisma.tx.loanItem.delete).not.toHaveBeenCalled();
+    });
+
+    it('persists a manual reorder of existing items without adding or removing any', async () => {
+      const twoItemLoan = {
+        ...editableLoan,
+        items: [
+          { ...editableLoan.items[0], id: 'li-1', inventoryItemId: 'item-1', sortOrder: 0 },
+          {
+            ...editableLoan.items[0],
+            id: 'li-2',
+            inventoryItemId: 'item-2',
+            sortOrder: 1,
+            inventoryItem: { ...editableLoan.items[0].inventoryItem, id: 'item-2' },
+          },
+        ],
+      };
+      prisma.loan.findFirst.mockResolvedValue(twoItemLoan);
+
+      await service.update(
+        'loan-1',
+        { items: [{ inventoryItemId: 'item-2' }, { inventoryItemId: 'item-1' }] },
+        administerUser,
+      );
+
+      expect(prisma.tx.loanItem.update).toHaveBeenCalledWith({
+        where: { id: 'li-2' },
+        data: { sortOrder: 0 },
+      });
+      expect(prisma.tx.loanItem.update).toHaveBeenCalledWith({
+        where: { id: 'li-1' },
+        data: { sortOrder: 1 },
+      });
+      expect(prisma.tx.loanItem.create).not.toHaveBeenCalled();
+      expect(prisma.tx.loanItem.delete).not.toHaveBeenCalled();
+    });
+
+    it('increases a quantity-based row by resolving only the additional units needed', async () => {
+      const quantityLoan = {
+        ...editableLoan,
+        items: [
+          {
+            ...editableLoan.items[0],
+            id: 'li-1',
+            inventoryItemId: 'item-1',
+            sortOrder: 0,
+            inventoryItem: {
+              ...editableLoan.items[0].inventoryItem,
+              id: 'item-1',
+              articleId: 'article-1',
+              parentItemId: null,
+            },
+          },
+          {
+            ...editableLoan.items[0],
+            id: 'li-2',
+            inventoryItemId: 'item-2',
+            sortOrder: 1,
+            inventoryItem: {
+              ...editableLoan.items[0].inventoryItem,
+              id: 'item-2',
+              articleId: 'article-1',
+              parentItemId: null,
+            },
+          },
+        ],
+      };
+      prisma.loan.findFirst.mockResolvedValue(quantityLoan);
+      prisma.inventoryItem.findMany.mockImplementation((args: any) => {
+        if (args?.where?.id?.in) return Promise.resolve([]); // nothing pinned explicitly
+        return Promise.resolve([
+          { id: 'item-3', status: 'available', parentItemId: null, articleId: 'article-1' },
+        ]);
+      });
+
+      await service.update(
+        'loan-1',
+        { items: [{ articleId: 'article-1', quantity: 3 }] },
+        administerUser,
+      );
+
+      expect(prisma.tx.loanItem.delete).not.toHaveBeenCalled();
+      expect(prisma.tx.loanItem.create).toHaveBeenCalledTimes(1);
+      expect(prisma.tx.loanItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ inventoryItemId: 'item-3', sortOrder: 2 }),
+        }),
+      );
+    });
+
+    it('decreases a quantity-based row by removing the surplus units', async () => {
+      const quantityLoan = {
+        ...editableLoan,
+        items: [
+          {
+            ...editableLoan.items[0],
+            id: 'li-1',
+            inventoryItemId: 'item-1',
+            sortOrder: 0,
+            inventoryItem: {
+              ...editableLoan.items[0].inventoryItem,
+              id: 'item-1',
+              articleId: 'article-1',
+              parentItemId: null,
+            },
+          },
+          {
+            ...editableLoan.items[0],
+            id: 'li-2',
+            inventoryItemId: 'item-2',
+            sortOrder: 1,
+            inventoryItem: {
+              ...editableLoan.items[0].inventoryItem,
+              id: 'item-2',
+              articleId: 'article-1',
+              parentItemId: null,
+            },
+          },
+        ],
+      };
+      prisma.loan.findFirst.mockResolvedValue(quantityLoan);
+
+      await service.update(
+        'loan-1',
+        { items: [{ articleId: 'article-1', quantity: 1 }] },
+        administerUser,
+      );
+
+      expect(prisma.tx.loanItem.create).not.toHaveBeenCalled();
+      expect(prisma.tx.loanItem.delete).toHaveBeenCalledWith({ where: { id: 'li-2' } });
     });
 
     it('resets an "approved" loan back to "requested", clears item approvals, and re-notifies', async () => {

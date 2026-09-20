@@ -115,19 +115,10 @@ struct InventoryListView: View {
                     NavigationLink(value: Destination.articleUnits(articleName: entry.article.name, units: entry.units)) {
                         GroupedInventoryRowView(entry: entry, searchText: viewModel.searchText)
                     }
+                    .task { list.loadNextAppendingIfNeeded(currentItem: entry) }
                 }
-                if list.totalPages > 1 {
-                    HStack {
-                        Button("Zurück") { Task { await list.loadPreviousPage() } }
-                            .disabled(!list.hasPreviousPage)
-                        Spacer()
-                        Text("Seite \(list.page) von \(list.totalPages)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Weiter") { Task { await list.loadNextPage() } }
-                            .disabled(!list.hasNextPage)
-                    }
+                if list.isLoadingMore {
+                    ProgressView().frame(maxWidth: .infinity)
                 }
             }
             .listStyle(.plain)

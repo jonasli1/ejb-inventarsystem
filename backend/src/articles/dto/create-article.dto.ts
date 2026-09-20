@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsObject,
   IsOptional,
   IsString,
@@ -64,4 +65,13 @@ export class CreateArticleDto {
   @IsOptional()
   @IsObject()
   attributes?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    default: false,
+    description:
+      'When true, units of this article may be checked out by articleId+quantity (the loan workflow auto-assigns available units), in addition to picking a specific inventory item. Off by default.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  loanableByQuantity?: boolean;
 }

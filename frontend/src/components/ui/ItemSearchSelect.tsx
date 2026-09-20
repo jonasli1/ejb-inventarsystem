@@ -1,10 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
-import { useArticles } from '@/lib/reference-data';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { findMatchedAlias } from '@/lib/matched-alias';
-import type { Article, CursorResult, InventoryItem } from '@/lib/api-types';
+import type { Article, CursorResult, InventoryItem, PaginatedResult } from '@/lib/api-types';
 import { INVENTORY_STATUS_LABEL } from '@/lib/status-labels';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
@@ -41,7 +40,6 @@ export function ItemSearchSelect({
   const [focused, setFocused] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
   const debounced = useDebouncedValue(search, 250);
-  const { data: articles } = useArticles();
   const blurTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const query = useQuery({
@@ -55,31 +53,43 @@ export function ItemSearchSelect({
     enabled: debounced.trim().length >= 2,
   });
 
+  // A live server-side search, not a client-side filter over some capped
+  // cached page - with 100+ articles in a real catalog, an article far from
+  // the top of the default (alphabetical) listing would otherwise never
+  // surface here no matter what's typed, silently making "nach Menge" picking
+  // impossible for it.
+  const articleQuery = useQuery({
+    queryKey: ['articles', 'universal-search', debounced],
+    queryFn: async () =>
+      (
+        await api.get<PaginatedResult<Article>>('/articles', {
+          params: { search: debounced, pageSize: 5 },
+        })
+      ).data.data,
+    enabled: allowArticles && debounced.trim().length >= 2,
+  });
+
   const rows: Row[] = useMemo(() => {
     const needle = debounced.trim().toLowerCase();
     if (needle.length < 2) return [];
     const articleRows: Row[] = allowArticles
-      ? (articles ?? [])
-          .filter((a) => {
-            if (a.stock.available <= 0) return false;
-            if (a.name.toLowerCase().includes(needle)) return true;
-            return a.aliases.some((alias) => alias.toLowerCase().includes(needle));
-          })
+      ? (articleQuery.data ?? [])
+          .filter((a) => a.loanableByQuantity && a.stock.available > 0)
           .slice(0, 3)
           .map((a) => ({ kind: 'article', key: `article-${a.id}`, article: a }))
       : [];
     // Items that are themselves accessory of another object can't be loaned
     // individually - they're only ever added automatically alongside their
-    // main object, so they don't show up as a selectable search result here.
+    // main object - unless explicitly flagged as separately loanable.
     const itemRows: Row[] = (query.data ?? [])
-      .filter((i) => !i.parentItemId)
+      .filter((i) => !i.parentItemId || i.separatelyLoanable)
       .map((i) => ({
         kind: 'item',
         key: `item-${i.id}`,
         item: i,
       }));
     return [...articleRows, ...itemRows];
-  }, [allowArticles, articles, debounced, query.data]);
+  }, [allowArticles, articleQuery.data, debounced, query.data]);
 
   if (selectedLabel) {
     return (
@@ -133,7 +143,7 @@ export function ItemSearchSelect({
       />
       {focused && debounced.trim().length >= 2 && (
         <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-surface shadow-md">
-          {query.isLoading ? (
+          {query.isLoading || articleQuery.isLoading ? (
             <p className="px-3 py-2 text-sm text-muted">Suche …</p>
           ) : rows.length > 0 ? (
             <ul className="max-h-60 overflow-y-auto py-1">

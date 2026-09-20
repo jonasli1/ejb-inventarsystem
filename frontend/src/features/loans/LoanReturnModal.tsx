@@ -52,7 +52,7 @@ export function LoanReturnModal({
   });
 
   return (
-    <Modal open onClose={onClose} title={`Rückgabe – ${loan.borrowerName ?? 'Ausleihe'}`} size="lg">
+    <Modal open onClose={onClose} title={`Rückgabe – ${loan.subject}`} size="lg">
       <div className="flex flex-col gap-3">
         {openItems.length === 0 && <p className="text-sm text-muted">Alle Objekte wurden bereits zurückgegeben.</p>}
         {openItems.map((item) => {

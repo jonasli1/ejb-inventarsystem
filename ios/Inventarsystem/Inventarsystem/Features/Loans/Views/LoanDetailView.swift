@@ -31,7 +31,7 @@ struct LoanDetailView: View {
                 ContentUnavailableView("Ausleihe nicht gefunden", systemImage: "questionmark.folder")
             }
         }
-        .navigationTitle("Ausleihe")
+        .navigationTitle(viewModel.loan?.subject ?? "Ausleihe")
         .navigationBarTitleDisplayMode(.inline)
         .task { await viewModel.load() }
         .errorAlert($viewModel.errorMessage)
@@ -41,6 +41,9 @@ struct LoanDetailView: View {
     @ViewBuilder
     private func content(_ loan: Loan) -> some View {
         List {
+            Section {
+                LabeledContent("Betreff", value: loan.subject)
+            }
             Section("Ausleiher") {
                 LabeledContent("Name", value: loan.borrowerDisplayName)
                 if let email = loan.borrowerEmail { LabeledContent("E-Mail", value: email) }

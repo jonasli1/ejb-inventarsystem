@@ -10,6 +10,7 @@ struct InventoryDetailView: View {
     @State private var showDeleteConfirm = false
     @State private var showDecommissionConfirm = false
     @State private var showAccessoryPicker = false
+    @State private var addAccessorySeparatelyLoanable = false
 
     private enum Tab: String, CaseIterable { case overview = "Übersicht", documents = "Dokumente", accessories = "Zubehör" }
 
@@ -256,25 +257,40 @@ struct InventoryDetailView: View {
                 Text("Kein Zubehör zugeordnet.").foregroundStyle(.secondary)
             } else {
                 ForEach(viewModel.accessories) { accessory in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(accessory.displayNumber).font(.subheadline.weight(.medium))
-                            Text(accessory.article.name).font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if canUpdate {
-                            Button(role: .destructive) {
-                                Task { await viewModel.removeAccessory(accessory.id) }
-                            } label: {
-                                Image(systemName: "minus.circle")
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(accessory.displayNumber).font(.subheadline.weight(.medium))
+                                Text(accessory.article.name).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if canUpdate {
+                                Button(role: .destructive) {
+                                    Task { await viewModel.removeAccessory(accessory.id) }
+                                } label: {
+                                    Image(systemName: "minus.circle")
+                                }
                             }
                         }
+                        Toggle(
+                            "Einzeln ausleihbar",
+                            isOn: Binding(
+                                get: { accessory.separatelyLoanable },
+                                set: { newValue in
+                                    Task { await viewModel.setAccessorySeparatelyLoanable(accessory.id, separatelyLoanable: newValue) }
+                                }
+                            )
+                        )
+                        .font(.caption)
+                        .disabled(!canUpdate)
                     }
                     Divider()
                 }
             }
 
             if canUpdate {
+                Toggle("Neues Zubehör kann auch einzeln ausgeliehen werden", isOn: $addAccessorySeparatelyLoanable)
+                    .font(.caption)
                 Button {
                     showAccessoryPicker = true
                 } label: {
@@ -290,7 +306,9 @@ struct InventoryDetailView: View {
                     search: { query in await viewModel.accessoryCandidateSearch(query) },
                     onSelect: { candidate in
                         showAccessoryPicker = false
-                        Task { await viewModel.assignAccessory(candidate.item.id) }
+                        let separatelyLoanable = addAccessorySeparatelyLoanable
+                        addAccessorySeparatelyLoanable = false
+                        Task { await viewModel.assignAccessory(candidate.item.id, separatelyLoanable: separatelyLoanable) }
                     },
                     enableStickerScan: true
                 )

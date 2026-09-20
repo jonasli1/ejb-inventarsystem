@@ -157,7 +157,7 @@ function LoansList({ onSelect }: { onSelect: (loan: Loan) => void }) {
         ) : (
           <div>
             <div className="hidden items-center gap-3 border-b border-border px-5 py-2.5 text-left text-xs font-medium text-muted sm:flex">
-              <span className="flex-1">Ausleiher</span>
+              <span className="flex-1">Betreff</span>
               <span className="w-24">Objekte</span>
               <span className="w-28">Geplantes Datum</span>
               <span className="w-28">Fällig am</span>
@@ -171,11 +171,15 @@ function LoansList({ onSelect }: { onSelect: (loan: Loan) => void }) {
                   className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5 hover:bg-canvas sm:flex-nowrap"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-ink">{loan.borrowerName ?? loan.borrowerPersonId}</p>
-                    <p className="truncate text-xs text-muted sm:hidden">
-                      {loan.items.length} Objekt{loan.items.length === 1 ? '' : 'e'} ·{' '}
-                      {format(new Date(loan.checkoutDate), 'dd.MM.yyyy')}
-                      {loan.dueDate ? ` – ${format(new Date(loan.dueDate), 'dd.MM.yyyy')}` : ''}
+                    <p className="truncate text-ink">{loan.subject}</p>
+                    <p className="truncate text-xs text-muted">
+                      {loan.borrowerName ?? loan.borrowerPersonId}
+                      <span className="sm:hidden">
+                        {' '}
+                        · {loan.items.length} Objekt{loan.items.length === 1 ? '' : 'e'} ·{' '}
+                        {format(new Date(loan.checkoutDate), 'dd.MM.yyyy')}
+                        {loan.dueDate ? ` – ${format(new Date(loan.dueDate), 'dd.MM.yyyy')}` : ''}
+                      </span>
                     </p>
                   </div>
                   <span className="hidden w-24 text-muted sm:inline">

@@ -35,6 +35,7 @@ final class LoanCreateViewModel {
     /// Non-nil when this view model is editing an existing loan rather than creating a new
     /// one — `save()` then calls `update` instead of `create`.
     private(set) var editingLoanId: String?
+    var subject = ""
     var borrowerName = ""
     var borrowerStreet = ""
     var borrowerCity = ""
@@ -58,12 +59,17 @@ final class LoanCreateViewModel {
     }
 
     var canSave: Bool {
-        !borrowerStreet.isEmpty && !borrowerCity.isEmpty && !borrowerEmail.isEmpty
+        !subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !borrowerStreet.isEmpty && !borrowerCity.isEmpty && !borrowerEmail.isEmpty
             && !borrowerPhone.isEmpty && !lines.isEmpty && !isSaving
     }
 
+    /// Items that are themselves accessory of another object can't be loaned individually -
+    /// they're only ever added automatically alongside their main object - unless explicitly
+    /// flagged as separately loanable, matching the reference frontend's `ItemSearchSelect`.
     func itemSearch(_ query: String) async -> [InventoryItem] {
-        (try? await inventoryService.fetchFlat(cursor: nil, limit: 8, filters: InventoryFilters(search: query)).items) ?? []
+        let items = (try? await inventoryService.fetchFlat(cursor: nil, limit: 8, filters: InventoryFilters(search: query)).items) ?? []
+        return items.filter { $0.parentItemId == nil || $0.separatelyLoanable }
     }
 
     /// Adds a specific Inventarobjekt line and, matching the reference frontend, auto-adds any
@@ -97,9 +103,49 @@ final class LoanCreateViewModel {
         lines.removeAll { $0.id == line.id || $0.parentLineId == line.id }
     }
 
+    /// A "group" is a main line plus its trailing accessory lines (always kept adjacent) -
+    /// reordering moves a whole group at once, so an accessory can never end up separated from
+    /// (or reordered independently of) its main object. Mirrors the reference frontend's
+    /// `itemRowGroups.ts`.
+    private func groupBounds(at index: Int) -> (start: Int, end: Int) {
+        var start = index
+        while start > 0 && lines[start].isAccessory { start -= 1 }
+        var end = start
+        while end + 1 < lines.count && lines[end + 1].parentLineId == lines[start].id { end += 1 }
+        return (start, end)
+    }
+
+    func canMoveLine(at index: Int, direction: Int) -> Bool {
+        let (start, end) = groupBounds(at: index)
+        return direction < 0 ? start > 0 : end + 1 < lines.count
+    }
+
+    /// Moves the whole group containing `index` up (direction < 0) or down (direction > 0),
+    /// swapping it with the adjacent group.
+    func moveLine(at index: Int, direction: Int) {
+        let (start, end) = groupBounds(at: index)
+        if direction < 0 {
+            guard start > 0 else { return }
+            let (prevStart, _) = groupBounds(at: start - 1)
+            let group = Array(lines[start...end])
+            let prevGroup = Array(lines[prevStart..<start])
+            lines.replaceSubrange(prevStart...end, with: group + prevGroup)
+        } else {
+            guard end + 1 < lines.count else { return }
+            let (_, nextEnd) = groupBounds(at: end + 1)
+            let group = Array(lines[start...end])
+            let nextGroup = Array(lines[(end + 1)...nextEnd])
+            lines.replaceSubrange(start...nextEnd, with: nextGroup + group)
+        }
+    }
+
     /// Pre-fills the form from an existing loan and switches `save()` into edit mode.
+    /// Consecutive non-accessory items sharing the same article are grouped back into a single
+    /// "by quantity" line (so a quantity originally requested via articleId+quantity can simply
+    /// be edited as a number), matching the reference frontend's `initialItems`.
     func seed(from loan: Loan) {
         editingLoanId = loan.id
+        subject = loan.subject
         borrowerName = loan.borrowerName ?? ""
         borrowerStreet = loan.borrowerStreet ?? ""
         borrowerCity = loan.borrowerCity ?? ""
@@ -108,9 +154,44 @@ final class LoanCreateViewModel {
         checkoutDate = loan.checkoutDate
         dueDate = loan.dueDate ?? loan.checkoutDate
         notes = loan.notes ?? ""
-        lines = loan.items.map { loanItem in
-            LoanDraftLine(id: "item-\(loanItem.inventoryItem.id)", kind: .specificItem(loanItem.inventoryItem))
+
+        let idsInLoan = Set(loan.items.map(\.inventoryItemId))
+        func isAccessory(_ loanItem: LoanItem) -> Bool {
+            guard let parentId = loanItem.inventoryItem.parentItemId else { return false }
+            return idsInLoan.contains(parentId)
         }
+
+        var newLines: [LoanDraftLine] = []
+        var i = 0
+        let items = loan.items
+        while i < items.count {
+            let current = items[i]
+            if isAccessory(current) {
+                newLines.append(LoanDraftLine(
+                    id: "item-\(current.inventoryItem.id)",
+                    kind: .specificItem(current.inventoryItem),
+                    isAccessory: true,
+                    parentLineId: current.inventoryItem.parentItemId.map { "item-\($0)" }
+                ))
+                i += 1
+                continue
+            }
+            var j = i
+            while j < items.count, items[j].inventoryItem.articleId == current.inventoryItem.articleId, !isAccessory(items[j]) {
+                j += 1
+            }
+            let groupSize = j - i
+            if groupSize > 1 {
+                newLines.append(LoanDraftLine(
+                    id: "article-\(current.inventoryItem.articleId)",
+                    kind: .articleQuantity(current.inventoryItem.article, quantity: groupSize)
+                ))
+            } else {
+                newLines.append(LoanDraftLine(id: "item-\(current.inventoryItem.id)", kind: .specificItem(current.inventoryItem)))
+            }
+            i = j
+        }
+        lines = newLines
     }
 
     func save() async -> Loan? {
@@ -127,6 +208,7 @@ final class LoanCreateViewModel {
         }
 
         let input = CreateLoanInput(
+            subject: subject,
             borrowerPersonId: nil,
             borrowerName: borrowerName.isEmpty ? nil : borrowerName,
             borrowerStreet: borrowerStreet,

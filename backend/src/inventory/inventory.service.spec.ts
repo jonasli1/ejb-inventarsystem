@@ -544,7 +544,31 @@ describe('InventoryService', () => {
       expect(prisma.inventoryItem.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'candidate-1' },
-          data: { parentItemId: 'parent-1' },
+          data: { parentItemId: 'parent-1', separatelyLoanable: false },
+        }),
+      );
+    });
+
+    it('assigns an eligible accessory as separately loanable when requested', async () => {
+      prisma.inventoryItem.findFirst.mockImplementation(
+        ({ where }: { where?: { id?: string } } = {}) => {
+          if (where?.id === 'parent-1')
+            return Promise.resolve({ id: 'parent-1', parentItemId: null });
+          if (where?.id === 'candidate-1')
+            return Promise.resolve({
+              id: 'candidate-1',
+              parentItemId: null,
+              status: 'available',
+              accessories: [],
+            });
+          return Promise.resolve(null);
+        },
+      );
+      await service.assignAccessory('parent-1', 'candidate-1', true);
+      expect(prisma.inventoryItem.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'candidate-1' },
+          data: { parentItemId: 'parent-1', separatelyLoanable: true },
         }),
       );
     });

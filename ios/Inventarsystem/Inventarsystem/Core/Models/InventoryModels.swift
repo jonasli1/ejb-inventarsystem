@@ -9,6 +9,7 @@ nonisolated enum InventoryStatus: String, Codable, Sendable, CaseIterable, Hasha
     case defect
     case retired
     case installed
+    case notLoanable
     case unknown
 
     init(from decoder: Decoder) throws {
@@ -25,6 +26,7 @@ nonisolated enum InventoryStatus: String, Codable, Sendable, CaseIterable, Hasha
         case .defect: return "Defekt"
         case .retired: return "Ausgemustert"
         case .installed: return "Fest installiert"
+        case .notLoanable: return "Nicht verleihbar"
         case .unknown: return "Unbekannt"
         }
     }
@@ -33,7 +35,7 @@ nonisolated enum InventoryStatus: String, Codable, Sendable, CaseIterable, Hasha
     /// the `inventory.retire` permission (checked separately by the caller) and `borrowed` is
     /// only reachable through the loan issue/return workflow, matching
     /// `MANUALLY_ASSIGNABLE_INVENTORY_STATUSES` in the reference frontend.
-    static var manuallyAssignable: [InventoryStatus] { [.available, .maintenance, .defect, .installed] }
+    static var manuallyAssignable: [InventoryStatus] { [.available, .maintenance, .defect, .installed, .notLoanable] }
 }
 
 /// The slim shape the backend sends for `InventoryItem.parentItem` (an accessory's owner) —
@@ -65,6 +67,9 @@ nonisolated struct InventoryItem: Codable, Identifiable, Sendable, Hashable {
     let nextDguvV3Check: Date?
     let notes: String?
     let parentItemId: String?
+    /// Only meaningful while `parentItemId` is set: whether this accessory may also be checked
+    /// out on its own, without its main object.
+    let separatelyLoanable: Bool
     let createdAt: Date
     let updatedAt: Date
     let deletedAt: Date?
@@ -79,6 +84,44 @@ nonisolated struct InventoryItem: Codable, Identifiable, Sendable, Hashable {
     /// What to show as the item's primary label when no inventory number is set — falls back
     /// to the Artikel name, matching the frontend's own display convention.
     var displayNumber: String { inventoryNumber ?? article.name }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, articleId, locationId, roomId, ownerOrganizationId, ownerUnitId,
+             inventoryNumber, status, serialNumber, purchasePrice, purchaseDate,
+             nextDguvV3Check, notes, parentItemId, separatelyLoanable, createdAt, updatedAt,
+             deletedAt, article, location, room, ownerOrganization, ownerUnit, parentItem
+    }
+
+    /// Custom decode so `separatelyLoanable` falls back to `false` (its backend default) when
+    /// absent, instead of failing the whole decode — keeps the app working against a backend
+    /// that hasn't rolled out this field yet.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        articleId = try container.decode(String.self, forKey: .articleId)
+        locationId = try container.decode(String.self, forKey: .locationId)
+        roomId = try container.decode(String.self, forKey: .roomId)
+        ownerOrganizationId = try container.decode(String.self, forKey: .ownerOrganizationId)
+        ownerUnitId = try container.decode(String.self, forKey: .ownerUnitId)
+        inventoryNumber = try container.decodeIfPresent(String.self, forKey: .inventoryNumber)
+        status = try container.decode(InventoryStatus.self, forKey: .status)
+        serialNumber = try container.decodeIfPresent(String.self, forKey: .serialNumber)
+        purchasePrice = try container.decodeIfPresent(Decimal.self, forKey: .purchasePrice)
+        purchaseDate = try container.decodeIfPresent(Date.self, forKey: .purchaseDate)
+        nextDguvV3Check = try container.decodeIfPresent(Date.self, forKey: .nextDguvV3Check)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        parentItemId = try container.decodeIfPresent(String.self, forKey: .parentItemId)
+        separatelyLoanable = try container.decodeIfPresent(Bool.self, forKey: .separatelyLoanable) ?? false
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        deletedAt = try container.decodeIfPresent(Date.self, forKey: .deletedAt)
+        article = try container.decode(Article.self, forKey: .article)
+        location = try container.decode(Location.self, forKey: .location)
+        room = try container.decode(Room.self, forKey: .room)
+        ownerOrganization = try container.decode(Organization.self, forKey: .ownerOrganization)
+        ownerUnit = try container.decode(OrganizationUnit.self, forKey: .ownerUnit)
+        parentItem = try container.decodeIfPresent(InventoryItemParentRef.self, forKey: .parentItem)
+    }
 }
 
 /// `GET /inventory/:id` (detail) response — verified against a live instance to be a full

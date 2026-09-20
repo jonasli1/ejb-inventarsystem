@@ -70,13 +70,17 @@ export class ExportService {
       where: { id, deletedAt: null },
       include: {
         lentBy: { select: { displayName: true, email: true } },
-        items: { include: { inventoryItem: { include: { article: true } } } },
+        items: {
+          include: { inventoryItem: { include: { article: true } } },
+          orderBy: { sortOrder: 'asc' },
+        },
       },
     });
     if (!loan) throw new AppNotFoundException('Ausleihe nicht gefunden.');
 
     const borrower = loan.borrowerName ?? loan.borrowerPersonId ?? '–';
     const meta = [
+      { label: 'Betreff', value: loan.subject },
       { label: 'Ausleiher', value: borrower },
       { label: 'Status', value: LOAN_STATUS_LABEL[loan.status] ?? loan.status },
       { label: 'Geplantes Ausgabedatum', value: fmtDate(loan.checkoutDate) },
@@ -104,10 +108,10 @@ export class ExportService {
         item.returnedCondition != null ? `${item.returnedCondition}%` : '',
     }));
 
-    const filename = `Ausleihe-${slug(borrower)}-${loan.id.slice(0, 8)}`;
+    const filename = `Ausleihe-${slug(loan.subject)}-${loan.id.slice(0, 8)}`;
 
     if (format === 'pdf') {
-      const buffer = await renderPdf(`Ausleihe: ${borrower}`, meta, [
+      const buffer = await renderPdf(`Ausleihe: ${loan.subject}`, meta, [
         { title: 'Objekte', columns, rows },
       ]);
       return {

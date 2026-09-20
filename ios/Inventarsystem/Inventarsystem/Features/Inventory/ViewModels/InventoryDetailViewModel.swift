@@ -162,10 +162,10 @@ final class InventoryDetailViewModel {
         return (try? await service.fetchAccessoryCandidates(itemId: id, search: query, page: 1, pageSize: 20).items) ?? []
     }
 
-    func assignAccessory(_ accessoryItemId: String) async {
+    func assignAccessory(_ accessoryItemId: String, separatelyLoanable: Bool) async {
         guard let id = item?.id else { return }
         do {
-            try await service.assignAccessory(itemId: id, accessoryItemId: accessoryItemId)
+            try await service.assignAccessory(itemId: id, accessoryItemId: accessoryItemId, separatelyLoanable: separatelyLoanable)
             await load()
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "Zubehör konnte nicht zugeordnet werden."
@@ -179,6 +179,15 @@ final class InventoryDetailViewModel {
             await load()
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "Zubehör konnte nicht entfernt werden."
+        }
+    }
+
+    func setAccessorySeparatelyLoanable(_ accessoryId: String, separatelyLoanable: Bool) async {
+        do {
+            try await service.setSeparatelyLoanable(itemId: accessoryId, separatelyLoanable: separatelyLoanable)
+            await load()
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "Änderung konnte nicht gespeichert werden."
         }
     }
 

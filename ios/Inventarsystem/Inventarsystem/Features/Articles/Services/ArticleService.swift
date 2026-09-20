@@ -17,9 +17,10 @@ nonisolated struct ArticleInput: Encodable, Sendable {
     var categoryId: String?
     var unitOfMeasure: String = ""
     var manufacturer: String = ""
+    var loanableByQuantity: Bool = false
 
     private enum CodingKeys: String, CodingKey {
-        case name, description, notes, aliases, categoryId, unitOfMeasure, manufacturer
+        case name, description, notes, aliases, categoryId, unitOfMeasure, manufacturer, loanableByQuantity
     }
 
     func encode(to encoder: Encoder) throws {
@@ -31,6 +32,7 @@ nonisolated struct ArticleInput: Encodable, Sendable {
         try container.encodeIfPresent(categoryId, forKey: .categoryId)
         try container.encode(unitOfMeasure, forKey: .unitOfMeasure)
         try container.encode(manufacturer, forKey: .manufacturer)
+        try container.encode(loanableByQuantity, forKey: .loanableByQuantity)
     }
 }
 

@@ -30,7 +30,7 @@ export function LoanIssueModal({
   });
 
   return (
-    <Modal open onClose={onClose} title={`Ausgabe – ${loan.borrowerName ?? 'Ausleihe'}`} size="lg">
+    <Modal open onClose={onClose} title={`Ausgabe – ${loan.subject}`} size="lg">
       <div className="flex flex-col gap-3">
         {loan.items.map((item) => (
           <div key={item.id} className="rounded-lg border border-border p-3">

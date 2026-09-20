@@ -73,6 +73,10 @@ export function InventoryItemCreateModal({ open, onClose }: { open: boolean; onC
       void queryClient.invalidateQueries({ queryKey: ['inventory'] });
       void queryClient.invalidateQueries({ queryKey: ['articles'] });
       toast.push('Inventarobjekt wurde angelegt.');
+      // Belt-and-suspenders alongside the open-triggered reset effect above:
+      // guarantees a blank form for the next item even if the modal stays
+      // mounted across uses without `open` toggling false in between.
+      reset({});
       onClose();
     },
     onError: (err) => {

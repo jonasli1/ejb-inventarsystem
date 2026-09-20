@@ -42,6 +42,7 @@ const MANAGE_GATED_UPDATE_KEYS = [
   'purchasePrice',
   'purchaseDate',
   'nextDguvV3Check',
+  'separatelyLoanable',
 ] as const satisfies readonly (keyof UpdateInventoryItemDto)[];
 
 const INVENTORY_ITEM_INCLUDE = {
@@ -461,7 +462,7 @@ export class InventoryService {
       // Retiring a parent releases its accessories rather than deleting them.
       this.prisma.inventoryItem.updateMany({
         where: { parentItemId: id },
-        data: { parentItemId: null },
+        data: { parentItemId: null, separatelyLoanable: false },
       }),
       this.prisma.stockMovement.create({
         data: {
@@ -605,7 +606,11 @@ export class InventoryService {
     return { eligible: true };
   }
 
-  async assignAccessory(itemId: string, accessoryItemId: string) {
+  async assignAccessory(
+    itemId: string,
+    accessoryItemId: string,
+    separatelyLoanable = false,
+  ) {
     if (itemId === accessoryItemId) {
       throw new AppBadRequestException(
         'Ein Objekt kann nicht sein eigenes Zubehör sein.',
@@ -645,7 +650,7 @@ export class InventoryService {
 
     return this.prisma.inventoryItem.update({
       where: { id: accessoryItemId },
-      data: { parentItemId: itemId },
+      data: { parentItemId: itemId, separatelyLoanable },
       include: INVENTORY_ITEM_INCLUDE,
     });
   }
@@ -661,7 +666,7 @@ export class InventoryService {
     }
     return this.prisma.inventoryItem.update({
       where: { id: accessoryItemId },
-      data: { parentItemId: null },
+      data: { parentItemId: null, separatelyLoanable: false },
       include: INVENTORY_ITEM_INCLUDE,
     });
   }

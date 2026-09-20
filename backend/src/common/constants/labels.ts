@@ -5,6 +5,7 @@ export const INVENTORY_STATUS_LABEL: Record<string, string> = {
   defect: 'Defekt',
   retired: 'Ausgemustert',
   installed: 'Fest installiert (nicht ausleihbar)',
+  notLoanable: 'Nicht verleihbar',
 };
 
 export const LOAN_STATUS_LABEL: Record<string, string> = {

@@ -12,8 +12,9 @@ nonisolated protocol InventoryServicing: Sendable {
     func create(_ input: CreateInventoryItemInput) async throws -> InventoryItem
     func update(id: String, input: UpdateInventoryItemInput) async throws -> InventoryItem
     func move(id: String, toRoomId: String, note: String?) async throws -> InventoryItem
-    func assignAccessory(itemId: String, accessoryItemId: String) async throws
+    func assignAccessory(itemId: String, accessoryItemId: String, separatelyLoanable: Bool) async throws
     func removeAccessory(itemId: String, accessoryId: String) async throws
+    func setSeparatelyLoanable(itemId: String, separatelyLoanable: Bool) async throws
     func delete(id: String) async throws
 }
 
@@ -224,15 +225,23 @@ nonisolated struct InventoryService: InventoryServicing {
         return try await APIClient.shared.request("inventory/\(id)/move", method: "POST", body: MoveBody(toRoomId: toRoomId, note: note))
     }
 
-    func assignAccessory(itemId: String, accessoryItemId: String) async throws {
-        struct Body: Encodable { let accessoryItemId: String }
+    func assignAccessory(itemId: String, accessoryItemId: String, separatelyLoanable: Bool) async throws {
+        struct Body: Encodable { let accessoryItemId: String; let separatelyLoanable: Bool }
         let _: InventoryItem = try await APIClient.shared.request(
-            "inventory/\(itemId)/accessory", method: "PUT", body: Body(accessoryItemId: accessoryItemId)
+            "inventory/\(itemId)/accessory", method: "PUT",
+            body: Body(accessoryItemId: accessoryItemId, separatelyLoanable: separatelyLoanable)
         )
     }
 
     func removeAccessory(itemId: String, accessoryId: String) async throws {
         try await APIClient.shared.requestVoid("inventory/\(itemId)/accessory/\(accessoryId)", method: "DELETE")
+    }
+
+    func setSeparatelyLoanable(itemId: String, separatelyLoanable: Bool) async throws {
+        struct Body: Encodable { let separatelyLoanable: Bool }
+        let _: InventoryItem = try await APIClient.shared.request(
+            "inventory/\(itemId)", method: "PUT", body: Body(separatelyLoanable: separatelyLoanable)
+        )
     }
 
     func delete(id: String) async throws {

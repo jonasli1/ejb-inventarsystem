@@ -27,7 +27,15 @@ import { FilterMenu, FILTER_TYPE_LABEL, type FilterValueOption, type InventoryFi
 
 // This filter includes "borrowed" (unlike the manual status picker) since
 // filtering by it is a legitimate read-only query.
-const STATUS_OPTIONS: InventoryStatus[] = ['available', 'borrowed', 'maintenance', 'defect', 'retired', 'installed'];
+const STATUS_OPTIONS: InventoryStatus[] = [
+  'available',
+  'borrowed',
+  'maintenance',
+  'defect',
+  'retired',
+  'installed',
+  'notLoanable',
+];
 
 const ROW_HEIGHT_ESTIMATE = 56;
 

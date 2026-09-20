@@ -109,7 +109,7 @@ export function LoanDetailModal({
   const approvedCount = loan.items.filter((i) => i.approvedAt).length;
 
   return (
-    <Modal open onClose={onClose} title={loan.borrowerName ?? 'Ausleihe'} size="lg">
+    <Modal open onClose={onClose} title={loan.subject} size="lg">
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">

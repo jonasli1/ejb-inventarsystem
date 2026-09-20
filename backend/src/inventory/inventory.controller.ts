@@ -113,7 +113,11 @@ export class InventoryController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AssignAccessoryDto,
   ) {
-    return this.inventoryService.assignAccessory(id, dto.accessoryItemId);
+    return this.inventoryService.assignAccessory(
+      id,
+      dto.accessoryItemId,
+      dto.separatelyLoanable,
+    );
   }
 
   @RequirePermissions(PERMISSIONS.INVENTORY_UPDATE)

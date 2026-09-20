@@ -24,6 +24,7 @@ const schema = z.object({
   categoryId: z.string().optional(),
   unitOfMeasure: z.string().optional(),
   manufacturer: z.string().optional(),
+  loanableByQuantity: z.boolean().optional(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -72,6 +73,7 @@ export function ArticleFormModal({
       categoryId: article?.categoryId ?? '',
       unitOfMeasure: article?.unitOfMeasure ?? '',
       manufacturer: article?.manufacturer ?? '',
+      loanableByQuantity: article?.loanableByQuantity ?? false,
     });
   }, [open, article, reset]);
 
@@ -85,6 +87,7 @@ export function ArticleFormModal({
         categoryId: values.categoryId || undefined,
         unitOfMeasure: values.unitOfMeasure || undefined,
         manufacturer: values.manufacturer || undefined,
+        loanableByQuantity: values.loanableByQuantity ?? false,
       };
       if (article) {
         await api.put(`/articles/${article.id}`, payload);
@@ -143,6 +146,11 @@ export function ArticleFormModal({
             <Input {...register('manufacturer')} disabled={!canSubmit} />
           </Field>
         </div>
+
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input type="checkbox" {...register('loanableByQuantity')} disabled={!canSubmit} />
+          Nach Anzahl ausleihbar (Einheiten können per Menge statt einzeln ausgewählt werden)
+        </label>
 
         {article ? (
           <div className="flex flex-col gap-4 border-t border-border pt-4">

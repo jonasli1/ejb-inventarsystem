@@ -14,9 +14,8 @@ export const MANUALLY_ASSIGNABLE_INVENTORY_STATUSES = Object.values(
  * check at all (any manually-assignable status could jump to any other),
  * which allowed nonsensical hops like retired -> available. This map makes
  * the state machine explicit and consistent:
- *  - available/maintenance/defect freely cycle among each other and can move
- *    to installed or retired.
- *  - installed can move back to any working state or be retired.
+ *  - available/maintenance/defect/installed/notLoanable freely cycle among
+ *    each other and can move to retired.
  *  - retired is terminal (an ausgemustertes Objekt is not manually
  *    reactivated) - it also frees up its inventory number for reuse.
  *  - borrowed is reachable only via the loan workflow (issue), and leaves
@@ -31,22 +30,33 @@ export const ALLOWED_STATUS_TRANSITIONS: Record<
     InventoryStatus.maintenance,
     InventoryStatus.defect,
     InventoryStatus.installed,
+    InventoryStatus.notLoanable,
     InventoryStatus.retired,
   ],
   maintenance: [
     InventoryStatus.available,
     InventoryStatus.defect,
+    InventoryStatus.notLoanable,
     InventoryStatus.retired,
   ],
   defect: [
     InventoryStatus.available,
     InventoryStatus.maintenance,
+    InventoryStatus.notLoanable,
     InventoryStatus.retired,
   ],
   installed: [
     InventoryStatus.available,
     InventoryStatus.maintenance,
     InventoryStatus.defect,
+    InventoryStatus.notLoanable,
+    InventoryStatus.retired,
+  ],
+  notLoanable: [
+    InventoryStatus.available,
+    InventoryStatus.maintenance,
+    InventoryStatus.defect,
+    InventoryStatus.installed,
     InventoryStatus.retired,
   ],
   retired: [],

@@ -135,10 +135,10 @@ export function CalendarPage() {
                       <button
                         key={loan.id}
                         onClick={() => setSelectedLoanId(loan.id)}
-                        title={`${loan.borrowerName ?? loan.borrowerPersonId ?? ''} · ${LOAN_STATUS_LABEL[loan.status]}`}
+                        title={`${loan.subject} · ${LOAN_STATUS_LABEL[loan.status]}`}
                         className={`truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium ${STATUS_TONE_CLASS[loan.status] ?? 'bg-black/5 text-ink'}`}
                       >
-                        {loan.borrowerName ?? loan.borrowerPersonId ?? 'Ausleihe'}
+                        {loan.subject}
                       </button>
                     ))}
                     {dayLoans.length > 3 && (

@@ -37,6 +37,7 @@ const INVENTORY_STATUS_TONE: Record<string, Tone> = {
   defect: 'red',
   retired: 'neutral',
   installed: 'purple',
+  notLoanable: 'neutral',
 };
 
 export function InventoryStatusBadge({ status }: { status: string }) {

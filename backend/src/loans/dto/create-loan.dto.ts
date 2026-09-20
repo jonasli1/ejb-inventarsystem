@@ -47,6 +47,14 @@ export class CreateLoanItemDto {
 }
 
 export class CreateLoanDto {
+  @ApiProperty({
+    description:
+      "The loan's primary display name (e.g. an event/project name), shown ahead of the borrower everywhere the loan is listed/exported.",
+  })
+  @IsString()
+  @MinLength(1)
+  subject: string;
+
   @ApiPropertyOptional({
     description: 'Internal borrower (references a User).',
   })

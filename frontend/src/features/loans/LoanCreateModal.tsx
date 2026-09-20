@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import { api, getApiErrorMessage } from '@/lib/api-client';
 import type { Article, InventoryItem, InventoryItemDetail, Loan, LoanTemplate } from '@/lib/api-types';
 import { Modal } from '@/components/ui/Modal';
@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/toast';
 import { ItemSearchSelect } from '@/components/ui/ItemSearchSelect';
 import { useAuth } from '@/auth/useAuth';
 import { isPermitted, PERMISSIONS } from '@/lib/permissions';
+import { groupBounds, moveGroup } from '@/features/loans/itemRowGroups';
 
 type ItemMode = 'article' | 'item' | '';
 
@@ -48,6 +49,7 @@ export function LoanCreateModal({
   const canPreApprove = isPermitted(hasPermission, [PERMISSIONS.LOANS_MANAGE, PERMISSIONS.LOANS_ADMINISTER]);
   const canAdminister = isPermitted(hasPermission, PERMISSIONS.LOANS_ADMINISTER);
 
+  const [subject, setSubject] = useState('');
   const [borrowerName, setBorrowerName] = useState('');
   const [borrowerStreet, setBorrowerStreet] = useState('');
   const [borrowerCity, setBorrowerCity] = useState('');
@@ -70,6 +72,7 @@ export function LoanCreateModal({
   });
 
   const reset = () => {
+    setSubject('');
     setBorrowerName('');
     setBorrowerStreet('');
     setBorrowerCity('');
@@ -102,6 +105,7 @@ export function LoanCreateModal({
     mutationFn: async () =>
       (
         await api.post<Loan>('/loans', {
+          subject,
           borrowerName,
           borrowerStreet: borrowerStreet || undefined,
           borrowerCity: borrowerCity || undefined,
@@ -194,6 +198,7 @@ export function LoanCreateModal({
     });
   };
 
+
   return (
     <Modal
       open={open}
@@ -208,6 +213,10 @@ export function LoanCreateModal({
         onSubmit={(e) => {
           e.preventDefault();
           setError(null);
+          if (!subject.trim()) {
+            setError('Bitte einen Betreff angeben.');
+            return;
+          }
           if (!borrowerName.trim()) {
             setError('Bitte einen Ausleiher angeben.');
             return;
@@ -221,6 +230,16 @@ export function LoanCreateModal({
         className="flex flex-col gap-4"
         autoComplete="off"
       >
+        <Field label="Betreff">
+          <Input
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="z. B. Jugendfreizeit Sommer 2026"
+            autoComplete="off"
+            required
+          />
+        </Field>
+
         {canAdminister && templatesQuery.data && templatesQuery.data.length > 0 && (
           <Field label="Aus Vorlage erstellen">
             <Select
@@ -360,6 +379,32 @@ export function LoanCreateModal({
                     }}
                     className="w-20"
                   />
+                )}
+
+                {!item.accessoryOfItemId && item.mode !== '' && (
+                  <div className="mt-1 flex flex-col">
+                    <button
+                      type="button"
+                      title="Nach oben"
+                      onClick={() => setItems((prev) => moveGroup(prev, index, -1))}
+                      className="p-0.5 text-muted hover:text-ink disabled:opacity-30"
+                      disabled={groupBounds(items, index)[0] === 0}
+                    >
+                      <ChevronUp size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      title="Nach unten"
+                      onClick={() => setItems((prev) => moveGroup(prev, index, 1))}
+                      className="p-0.5 text-muted hover:text-ink disabled:opacity-30"
+                      disabled={(() => {
+                        const [, end] = groupBounds(items, index);
+                        return !items[end + 1] || items[end + 1].mode === '';
+                      })()}
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </div>
                 )}
 
                 <button

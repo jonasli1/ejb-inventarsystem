@@ -109,4 +109,37 @@ struct OffsetPagedListTests {
         await list.loadPreviousPage()
         #expect(list.page == 1)
     }
+
+    @Test func loadNextAppendingAccumulatesItemsAcrossPages() async {
+        let list = OffsetPagedList<Fake>(pageSize: 2) { page, pageSize in
+            (items: [Fake(id: (page - 1) * pageSize + 1), Fake(id: (page - 1) * pageSize + 2)],
+             meta: PageMeta(page: page, pageSize: pageSize, total: 6, totalPages: 3))
+        }
+        await list.load(page: 1)
+        #expect(list.items.map(\.id) == [1, 2])
+
+        await list.loadNextAppending()
+        #expect(list.items.map(\.id) == [1, 2, 3, 4])
+        #expect(list.page == 2)
+
+        await list.loadNextAppending()
+        #expect(list.items.map(\.id) == [1, 2, 3, 4, 5, 6])
+        #expect(list.page == 3)
+
+        // Already on the last page — must be a no-op, not request page 4.
+        await list.loadNextAppending()
+        #expect(list.items.map(\.id) == [1, 2, 3, 4, 5, 6])
+    }
+
+    @Test func loadNextAppendingIfNeededTriggersNearTheEnd() async {
+        let list = OffsetPagedList<Fake>(pageSize: 2) { page, pageSize in
+            (items: [Fake(id: (page - 1) * pageSize + 1), Fake(id: (page - 1) * pageSize + 2)],
+             meta: PageMeta(page: page, pageSize: pageSize, total: 4, totalPages: 2))
+        }
+        await list.load(page: 1)
+        list.loadNextAppendingIfNeeded(currentItem: Fake(id: 1))
+        // Give the fire-and-forget Task a beat to run.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        #expect(list.items.map(\.id) == [1, 2, 3, 4])
+    }
 }

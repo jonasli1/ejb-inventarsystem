@@ -34,6 +34,7 @@ const LOAN_INCLUDE = {
       inventoryItem: { include: { article: true } },
       approvedBy: { select: { id: true, displayName: true } },
     },
+    orderBy: { sortOrder: 'asc' },
   },
 } satisfies Prisma.LoanInclude;
 
@@ -101,6 +102,7 @@ export class LoansService {
       },
       select: {
         id: true,
+        subject: true,
         borrowerName: true,
         borrowerPersonId: true,
         status: true,
@@ -395,13 +397,26 @@ export class LoansService {
    * fulfill an articleId+quantity request, and are auto-bundled alongside
    * every resolved main object's own accessories - they can only ever be
    * part of a loan together with their main object (see the trailing
-   * consistency pass below).
+   * consistency pass below), unless individually flagged
+   * `separatelyLoanable`, in which case they may also be selected alone via
+   * an explicit inventoryItemId.
+   *
+   * An articleId+quantity spec additionally requires the article's
+   * `loanableByQuantity` flag - articles without it can only be checked out
+   * by picking specific inventory items.
    */
   private async resolveCheckoutItems(
     items: CreateLoanItemDto[],
     checkoutDate: Date,
     dueDate: Date | null,
     excludeLoanId?: string,
+    // update()'s edit flow resolves brand-new items in isolation from the
+    // loan's already-kept items - an accessory being newly added whose main
+    // object is already present (kept, not part of this call) must not be
+    // rejected as "orphaned" just because its parent isn't part of *this*
+    // resolution batch. Empty for create(), where every item is genuinely
+    // new and must satisfy the trailing consistency check on its own.
+    extraSatisfiedParentIds: Set<string> = new Set(),
   ): Promise<InventoryItem[]> {
     const resolved: InventoryItem[] = [];
     const usedIds = new Set<string>();
@@ -446,6 +461,20 @@ export class LoansService {
       }
 
       if (spec.articleId) {
+        const article = await this.prisma.article.findFirst({
+          where: { id: spec.articleId, deletedAt: null },
+          select: { loanableByQuantity: true },
+        });
+        if (!article)
+          throw new AppNotFoundException(
+            `Artikel ${spec.articleId} nicht gefunden.`,
+          );
+        if (!article.loanableByQuantity) {
+          throw new AppBadRequestException(
+            `Artikel ${spec.articleId} ist nicht nach Anzahl ausleihbar - bitte konkrete Inventarobjekte auswählen.`,
+            'ARTICLE_NOT_LOANABLE_BY_QUANTITY',
+          );
+        }
         const quantity = spec.quantity ?? 1;
         const candidates = await this.prisma.inventoryItem.findMany({
           where: {
@@ -509,9 +538,15 @@ export class LoansService {
 
     // An accessory may only be part of this checkout together with its main
     // object - reject any accessory that ended up here on its own (either
-    // explicitly selected, or whose main object failed/was never requested).
+    // explicitly selected, or whose main object failed/was never requested)
+    // - unless it's explicitly flagged as separately loanable.
     for (const item of resolved) {
-      if (item.parentItemId && !usedIds.has(item.parentItemId)) {
+      if (
+        item.parentItemId &&
+        !usedIds.has(item.parentItemId) &&
+        !extraSatisfiedParentIds.has(item.parentItemId) &&
+        !item.separatelyLoanable
+      ) {
         throw new AppBadRequestException(
           `Inventarobjekt ${item.inventoryNumber ?? item.id} ist Zubehör eines anderen Objekts und kann nicht einzeln ausgeliehen werden.`,
           'ACCESSORY_CANNOT_BE_LOANED_ALONE',
@@ -582,6 +617,7 @@ export class LoansService {
     const createdLoan = await this.prisma.$transaction(async (tx) => {
       const loan = await tx.loan.create({
         data: {
+          subject: dto.subject,
           borrowerPersonId: dto.borrowerPersonId,
           borrowerName: dto.borrowerName,
           borrowerStreet: dto.borrowerStreet,
@@ -597,11 +633,12 @@ export class LoansService {
         },
       });
 
-      for (const item of resolvedItems) {
+      for (const [index, item] of resolvedItems.entries()) {
         await tx.loanItem.create({
           data: {
             loanId: loan.id,
             inventoryItemId: item.id,
+            sortOrder: index,
             ...(approvedItemIds?.has(item.id)
               ? { approvedAt: new Date(), approvedByUserId: user.id }
               : {}),
@@ -614,7 +651,7 @@ export class LoansService {
           entityType: 'Loan',
           entityId: loan.id,
           action: 'create',
-          summary: `Ausleihe für "${dto.borrowerName ?? dto.borrowerPersonId}" mit ${resolvedItems.length} Objekt(en) angelegt (Status: ${status})`,
+          summary: `Ausleihe "${dto.subject}" mit ${resolvedItems.length} Objekt(en) angelegt (Status: ${status})`,
           userId: user.id,
         },
         tx,
@@ -672,19 +709,79 @@ export class LoansService {
 
     let toRemove: (typeof loan.items)[number][] = [];
     let toAdd: InventoryItem[] = [];
+    // Maps every final inventoryItemId (kept or newly added) to its display
+    // position, derived from dto.items' array order - this is what actually
+    // persists a manual reorder, and is also what `sortOrder` on newly
+    // created LoanItems is set from below.
+    const sortOrderById = new Map<string, number>();
     if (dto.items) {
-      const desiredIds = new Set(dto.items.map((i) => i.inventoryItemId));
+      const items = dto.items;
       const currentIds = new Set(loan.items.map((i) => i.inventoryItemId));
+      const pinnedIds = new Set(
+        items.filter((i) => i.inventoryItemId).map((i) => i.inventoryItemId!),
+      );
+
+      // For each articleId+quantity spec, keep as many of the loan's current
+      // (non-accessory, not otherwise claimed) items of that article as fit
+      // the new quantity, and resolve the remainder as new items - this is
+      // what lets a quantity row simply be edited from e.g. 3 to 5 instead
+      // of requiring 2 more specific units to be hand-picked.
+      const claimedCurrentIds = new Set<string>();
+      interface Slot {
+        dtoIndex: number;
+        keptIds: string[];
+        newSpec?: { articleId: string; quantity: number };
+      }
+      const slots: Slot[] = [];
+      for (const [dtoIndex, spec] of items.entries()) {
+        if (spec.inventoryItemId) {
+          slots.push({ dtoIndex, keptIds: [] });
+          continue;
+        }
+        if (spec.articleId) {
+          const quantity = spec.quantity ?? 1;
+          const candidates = loan.items.filter(
+            (li) =>
+              li.inventoryItem.articleId === spec.articleId &&
+              li.inventoryItem.parentItemId === null &&
+              !claimedCurrentIds.has(li.inventoryItemId) &&
+              !pinnedIds.has(li.inventoryItemId),
+          );
+          const keep = candidates.slice(0, quantity);
+          keep.forEach((li) => claimedCurrentIds.add(li.inventoryItemId));
+          const remainder = quantity - keep.length;
+          slots.push({
+            dtoIndex,
+            keptIds: keep.map((li) => li.inventoryItemId),
+            newSpec:
+              remainder > 0
+                ? { articleId: spec.articleId, quantity: remainder }
+                : undefined,
+          });
+          continue;
+        }
+        throw new AppBadRequestException(
+          'Jedes Ausleih-Objekt benötigt entweder inventoryItemId oder articleId.',
+          'ITEM_SPEC_INVALID',
+        );
+      }
+
+      const finalKnownIds = new Set([...pinnedIds, ...claimedCurrentIds]);
 
       // Accessory consistency must hold for the *whole* resulting item set,
       // not just newly added items - otherwise a request could keep an
-      // already-current accessory while dropping its main object from
-      // desiredIds and bypass resolveCheckoutItems() entirely.
-      const desiredItems = await this.prisma.inventoryItem.findMany({
-        where: { id: { in: [...desiredIds] } },
+      // already-current accessory while dropping its main object and bypass
+      // resolveCheckoutItems() entirely. Only explicitly-pinned items can
+      // possibly be accessories here - quantity candidates are always
+      // filtered to parentItemId: null above.
+      const pinnedItems = await this.prisma.inventoryItem.findMany({
+        where: { id: { in: [...pinnedIds] } },
       });
-      const orphanedAccessory = desiredItems.find(
-        (i) => i.parentItemId && !desiredIds.has(i.parentItemId),
+      const orphanedAccessory = pinnedItems.find(
+        (i) =>
+          i.parentItemId &&
+          !i.separatelyLoanable &&
+          !finalKnownIds.has(i.parentItemId),
       );
       if (orphanedAccessory) {
         throw new AppBadRequestException(
@@ -693,20 +790,78 @@ export class LoansService {
         );
       }
 
-      toRemove = loan.items.filter((li) => !desiredIds.has(li.inventoryItemId));
-      const newIds = dto.items
-        .map((i) => i.inventoryItemId)
-        .filter((id) => !currentIds.has(id));
-      toAdd = await this.resolveCheckoutItems(
-        newIds.map((inventoryItemId) => ({ inventoryItemId })),
-        checkoutDate,
-        dueDate,
-        loanId,
+      toRemove = loan.items.filter(
+        (li) =>
+          !pinnedIds.has(li.inventoryItemId) &&
+          !claimedCurrentIds.has(li.inventoryItemId),
       );
+
+      // Resolve every genuinely-new pick (explicit items not already in the
+      // loan, plus quantity shortfalls) in one batch, in dto.items order,
+      // tracking which slot and how many items each spec contributes so the
+      // flat result can be sliced back apart afterwards.
+      const resolveSpecs: CreateLoanItemDto[] = [];
+      const resolveSlotIndices: number[] = [];
+      const resolveCounts: number[] = [];
+      slots.forEach((slot, slotIndex) => {
+        if (slot.newSpec) {
+          resolveSpecs.push(slot.newSpec);
+          resolveSlotIndices.push(slotIndex);
+          resolveCounts.push(slot.newSpec.quantity);
+        } else if (slot.keptIds.length === 0) {
+          // Explicit spec - only resolve if not already in the loan.
+          const id = items[slot.dtoIndex].inventoryItemId!;
+          if (!currentIds.has(id)) {
+            resolveSpecs.push({ inventoryItemId: id });
+            resolveSlotIndices.push(slotIndex);
+            resolveCounts.push(1);
+          }
+        }
+      });
+      const resolvedNew = resolveSpecs.length
+        ? await this.resolveCheckoutItems(
+            resolveSpecs,
+            checkoutDate,
+            dueDate,
+            loanId,
+            finalKnownIds,
+          )
+        : [];
       // No org/unit scope check on additions here (unlike create()'s
       // manage-tier fast path): the per-item approval step re-validates
       // scope before anything can move forward, so an unrestricted add is
       // safe - and matches assertCanEditLoan's unconditional manage rights.
+
+      // Slice the main (non-bundled) portion back out per slot, in order.
+      let cursor = 0;
+      const newIdsBySlot = new Map<number, string[]>();
+      resolveSlotIndices.forEach((slotIndex, specIndex) => {
+        const count = resolveCounts[specIndex];
+        newIdsBySlot.set(
+          slotIndex,
+          resolvedNew.slice(cursor, cursor + count).map((item) => item.id),
+        );
+        cursor += count;
+      });
+      // Anything past the known per-slot counts is auto-bundled accessories
+      // - appended at the end, since the user never explicitly ordered them.
+      const bundledAccessories = resolvedNew.slice(cursor);
+
+      let position = 0;
+      slots.forEach((slot, slotIndex) => {
+        if (slot.newSpec || slot.keptIds.length > 0) {
+          for (const id of slot.keptIds) sortOrderById.set(id, position++);
+          for (const id of newIdsBySlot.get(slotIndex) ?? [])
+            sortOrderById.set(id, position++);
+        } else {
+          // Plain explicit spec (kept-current or newly resolved single item).
+          const id = items[slot.dtoIndex].inventoryItemId!;
+          sortOrderById.set(id, position++);
+        }
+      });
+      for (const item of bundledAccessories) sortOrderById.set(item.id, position++);
+
+      toAdd = resolvedNew;
     }
 
     // Editing a not-yet-issued loan invalidates any approval progress: every
@@ -742,7 +897,11 @@ export class LoansService {
 
       for (const item of toAdd) {
         const created = await tx.loanItem.create({
-          data: { loanId, inventoryItemId: item.id },
+          data: {
+            loanId,
+            inventoryItemId: item.id,
+            sortOrder: sortOrderById.get(item.id) ?? 0,
+          },
         });
         if (loan.status === LoanStatus.issued) {
           await tx.inventoryItem.update({
@@ -770,9 +929,27 @@ export class LoansService {
         });
       }
 
+      // Persist any reordering of items that were already in the loan
+      // (newly added ones already got their sortOrder set at creation
+      // above).
+      if (dto.items) {
+        const toRemoveIds = new Set(toRemove.map((li) => li.id));
+        for (const li of loan.items) {
+          if (toRemoveIds.has(li.id)) continue;
+          const sortOrder = sortOrderById.get(li.inventoryItemId);
+          if (sortOrder !== undefined && sortOrder !== li.sortOrder) {
+            await tx.loanItem.update({
+              where: { id: li.id },
+              data: { sortOrder },
+            });
+          }
+        }
+      }
+
       await tx.loan.update({
         where: { id: loanId },
         data: {
+          subject: dto.subject,
           borrowerPersonId: dto.borrowerPersonId,
           borrowerName: dto.borrowerName,
           borrowerStreet: dto.borrowerStreet,
@@ -792,8 +969,8 @@ export class LoansService {
           entityId: loanId,
           action: 'update',
           summary: regressesFromApproved
-            ? `Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" bearbeitet (Status auf "beantragt" zurückgesetzt)`
-            : `Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" bearbeitet`,
+            ? `Ausleihe "${loan.subject}" bearbeitet (Status auf "beantragt" zurückgesetzt)`
+            : `Ausleihe "${loan.subject}" bearbeitet`,
           userId: user.id,
         },
         tx,
@@ -872,8 +1049,8 @@ export class LoansService {
           entityId: loanId,
           action: 'update',
           summary: fullyApproved
-            ? `Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" vollständig genehmigt`
-            : `${itemIdsToApprove.length}/${loan.items.length} Objekt(e) der Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" genehmigt`,
+            ? `Ausleihe "${loan.subject}" vollständig genehmigt`
+            : `${itemIdsToApprove.length}/${loan.items.length} Objekt(e) der Ausleihe "${loan.subject}" genehmigt`,
           userId: user.id,
         },
         tx,
@@ -936,7 +1113,7 @@ export class LoansService {
           entityType: 'Loan',
           entityId: loanId,
           action: 'update',
-          summary: `Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" ausgegeben`,
+          summary: `Ausleihe "${loan.subject}" ausgegeben`,
           userId: user.id,
         },
         tx,
@@ -981,7 +1158,7 @@ export class LoansService {
       entityType: 'Loan',
       entityId: loanId,
       action: 'update',
-      summary: `Status der Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" auf "beantragt" zurückgesetzt`,
+      summary: `Status der Ausleihe "${loan.subject}" auf "beantragt" zurückgesetzt`,
       userId: user.id,
     });
     return this.findOne(loanId);
@@ -1062,8 +1239,8 @@ export class LoansService {
           entityId: loanId,
           action: 'update',
           summary: allReturned
-            ? `Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" vollständig zurückgegeben`
-            : `Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" teilweise zurückgegeben`,
+            ? `Ausleihe "${loan.subject}" vollständig zurückgegeben`
+            : `Ausleihe "${loan.subject}" teilweise zurückgegeben`,
           userId: user.id,
         },
         tx,
@@ -1098,8 +1275,7 @@ export class LoansService {
       select: {
         id: true,
         status: true,
-        borrowerName: true,
-        borrowerPersonId: true,
+        subject: true,
         items: {
           where: { returnedAt: null },
           select: { id: true, inventoryItemId: true },
@@ -1151,7 +1327,7 @@ export class LoansService {
           entityType: 'Loan',
           entityId: loanId,
           action: 'delete',
-          summary: `Ausleihe für "${loan.borrowerName ?? loan.borrowerPersonId}" gelöscht`,
+          summary: `Ausleihe "${loan.subject}" gelöscht`,
           userId: user.id,
         },
         tx,

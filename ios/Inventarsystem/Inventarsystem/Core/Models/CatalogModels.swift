@@ -36,6 +36,9 @@ nonisolated struct Article: Codable, Identifiable, Sendable, Hashable {
     let unitOfMeasure: String?
     let manufacturer: String?
     let imageUrl: String?
+    /// When true, units of this article may be checked out by quantity (auto-assigned) in a
+    /// loan, in addition to picking a specific inventory item. False by default.
+    let loanableByQuantity: Bool
     let createdAt: Date
     let updatedAt: Date
     let deletedAt: Date?
@@ -46,6 +49,33 @@ nonisolated struct Article: Codable, Identifiable, Sendable, Hashable {
 
     static func == (lhs: Article, rhs: Article) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, description, notes, aliases, categoryId, unitOfMeasure, manufacturer,
+             imageUrl, loanableByQuantity, createdAt, updatedAt, deletedAt, documents
+    }
+
+    /// Custom decode so `loanableByQuantity` falls back to `false` (its backend default) when
+    /// absent, instead of failing the whole decode — keeps the app working against a backend
+    /// that hasn't rolled out this field yet, the same way `InventoryStatus.unknown` protects
+    /// against an unrecognized status rather than crashing the list.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        aliases = try container.decode([String].self, forKey: .aliases)
+        categoryId = try container.decodeIfPresent(String.self, forKey: .categoryId)
+        unitOfMeasure = try container.decodeIfPresent(String.self, forKey: .unitOfMeasure)
+        manufacturer = try container.decodeIfPresent(String.self, forKey: .manufacturer)
+        imageUrl = try container.decodeIfPresent(String.self, forKey: .imageUrl)
+        loanableByQuantity = try container.decodeIfPresent(Bool.self, forKey: .loanableByQuantity) ?? false
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        deletedAt = try container.decodeIfPresent(Date.self, forKey: .deletedAt)
+        documents = try container.decodeIfPresent([Attachment].self, forKey: .documents)
+    }
 }
 
 /// `GET /articles` row shape: an `Article`'s own fields plus an expanded `category` and a

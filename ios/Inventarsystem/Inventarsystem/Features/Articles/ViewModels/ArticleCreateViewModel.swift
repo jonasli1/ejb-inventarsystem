@@ -11,6 +11,7 @@ final class ArticleCreateViewModel {
     var categoryId: String?
     var unitOfMeasure = ""
     var manufacturer = ""
+    var loanableByQuantity = false
     private(set) var categories: [Category] = []
     private(set) var isSaving = false
     var errorMessage: String?
@@ -41,7 +42,8 @@ final class ArticleCreateViewModel {
             aliases: aliases.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },
             categoryId: categoryId,
             unitOfMeasure: unitOfMeasure,
-            manufacturer: manufacturer
+            manufacturer: manufacturer,
+            loanableByQuantity: loanableByQuantity
         )
         do {
             return try await articleService.create(input)
