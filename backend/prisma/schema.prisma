@@ -405,6 +405,11 @@ model Article {
   manufacturer  String?
   imageUrl      String?   @map("image_url")
   attributes    Json?
+  // When true, this article's units may be checked out by articleId+quantity
+  // (the loan workflow auto-picks available units) in addition to picking a
+  // specific InventoryItem. False by default - most articles are tracked and
+  // loaned out unit-by-unit.
+  loanableByQuantity Boolean @default(false) @map("loanable_by_quantity")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")
@@ -476,6 +481,10 @@ model InventoryItem {
   // for a device), enforced to depth 1, no cycles - see
   // InventoryService's accessory rules.
   parentItemId        String?         @map("parent_item_id")
+  // Only meaningful while parentItemId is set: when true, this accessory may
+  // also be checked out on its own, without its main object. Accessories
+  // default to false (bundled-only), matching the original behavior.
+  separatelyLoanable  Boolean         @default(false) @map("separately_loanable")
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")
   deletedAt           DateTime?       @map("deleted_at")
@@ -536,6 +545,9 @@ model StockMovement {
 
 model Loan {
   id               String     @id @default(uuid())
+  // The loan's primary display name (e.g. "Jugendfreizeit Sommer 2026"),
+  // shown ahead of the borrower everywhere a loan is listed/exported.
+  subject          String     @default("")
   borrowerPersonId String?    @map("borrower_person_id")
   borrowerName     String?    @map("borrower_name")
   borrowerStreet   String?    @map("borrower_street")
@@ -569,6 +581,10 @@ model LoanItem {
   id                  String    @id @default(uuid())
   loanId              String    @map("loan_id")
   inventoryItemId     String    @map("inventory_item_id")
+  // Display/export order within the loan, user-adjustable (drag/shift
+  // up-down in the create/edit forms). Assigned sequentially on create;
+  // reassigned wholesale whenever a loan's items are edited.
+  sortOrder           Int       @default(0) @map("sort_order")
   checkedOutCondition Int?      @map("checked_out_condition")
   returnedCondition   Int?      @map("returned_condition")
   returnedAt          DateTime? @map("returned_at")
