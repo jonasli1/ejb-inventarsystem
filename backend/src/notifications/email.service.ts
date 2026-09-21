@@ -101,9 +101,23 @@ export class EmailService {
     });
     if (!row?.enabled || !row.host || !row.fromAddress) return null;
 
-    const password = row.passwordEnc
-      ? decryptSecret(row.passwordEnc, this.secretKey)
-      : undefined;
+    // A stored password that fails to decrypt (e.g. BACKUP_SECRET_KEY changed
+    // since it was saved) must not crash every caller that tries to send a
+    // notification - callers already treat a null return as "email isn't
+    // usable right now" (notifyEvent no-ops, sendPasswordResetEmail no-ops,
+    // sendTestEmail surfaces a clean 400) and did so silently before this
+    // call was even reachable from every loan lifecycle action.
+    let password: string | undefined;
+    try {
+      password = row.passwordEnc
+        ? decryptSecret(row.passwordEnc, this.secretKey)
+        : undefined;
+    } catch (err) {
+      this.logger.warn(
+        `Stored SMTP password could not be decrypted - is BACKUP_SECRET_KEY unchanged since it was saved? Treating email as unconfigured: ${String(err)}`,
+      );
+      return null;
+    }
     const transport = nodemailer.createTransport({
       host: row.host,
       port: row.port ?? 587,

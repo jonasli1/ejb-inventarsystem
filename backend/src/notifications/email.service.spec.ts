@@ -4,8 +4,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AppBadRequestException } from '../common/exceptions/app.exception';
 import { ConfigService } from '@nestjs/config';
+import { decryptSecret } from '../backup/crypto.util';
 
 jest.mock('nodemailer');
+jest.mock('../backup/crypto.util', () => ({
+  ...jest.requireActual('../backup/crypto.util'),
+  decryptSecret: jest.fn(),
+}));
 
 describe('EmailService', () => {
   let service: EmailService;
@@ -80,6 +85,20 @@ describe('EmailService', () => {
         }),
       );
     });
+
+    it('refuses cleanly (not a crash) when the stored password can no longer be decrypted', async () => {
+      prisma.emailConfig.findUnique.mockResolvedValue({
+        ...enabledRow,
+        passwordEnc: 'ciphertext-from-a-different-key',
+      });
+      (decryptSecret as jest.Mock).mockImplementation(() => {
+        throw new Error('Unsupported state or unable to authenticate data');
+      });
+      await expect(service.sendTestEmail('test@example.com')).rejects.toThrow(
+        AppBadRequestException,
+      );
+      expect(sendMail).not.toHaveBeenCalled();
+    });
   });
 
   describe('notifyEvent', () => {
@@ -94,6 +113,24 @@ describe('EmailService', () => {
         enabled: false,
       });
       await service.notifyEvent('loan.requested', {});
+      expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it('does not throw (and so cannot fail the caller request) when the stored password can no longer be decrypted', async () => {
+      // Regression: a caller like LoansService.issue()/update()/create() runs
+      // its main transaction first and calls notifyEvent afterwards - if this
+      // throws, the whole HTTP request 500s even though the loan action
+      // itself already committed successfully.
+      prisma.emailConfig.findUnique.mockResolvedValue({
+        ...enabledRow,
+        passwordEnc: 'ciphertext-from-a-different-key',
+      });
+      (decryptSecret as jest.Mock).mockImplementation(() => {
+        throw new Error('Unsupported state or unable to authenticate data');
+      });
+      await expect(
+        service.notifyEvent('loan.requested', {}),
+      ).resolves.toBeUndefined();
       expect(sendMail).not.toHaveBeenCalled();
     });
 
