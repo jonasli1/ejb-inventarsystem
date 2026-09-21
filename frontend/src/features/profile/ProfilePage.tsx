@@ -6,6 +6,7 @@ import { api, getApiErrorMessage } from '@/lib/api-client';
 import type { NotificationPreferenceEntry, ThemePreference } from '@/lib/api-types';
 import { applyTheme } from '@/lib/theme';
 import { registerPasskey, isWebAuthnSupported } from '@/features/auth/passkey';
+import { usePublicAppSettings } from '@/lib/app-settings';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -22,6 +23,7 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
 
 export function ProfilePage() {
   const { me, refreshMe, logout } = useAuth();
+  const { data: appSettings } = usePublicAppSettings();
   const toast = useToast();
   const [deviceLabel, setDeviceLabel] = useState('');
   const [loading, setLoading] = useState(false);
@@ -107,28 +109,29 @@ export function ProfilePage() {
               ))}
             </div>
 
-            {isWebAuthnSupported() ? (
-              <div className="border-t border-border pt-4">
-                <p className="mb-2 text-sm font-medium text-ink">Passkey hinzufügen</p>
-                <div className="flex gap-2">
-                  <Field label="Gerätename (optional)">
-                    <Input
-                      placeholder="z. B. MacBook Pro"
-                      value={deviceLabel}
-                      onChange={(e) => setDeviceLabel(e.target.value)}
-                    />
-                  </Field>
+            {appSettings?.passkeyAvailable &&
+              (isWebAuthnSupported() ? (
+                <div className="border-t border-border pt-4">
+                  <p className="mb-2 text-sm font-medium text-ink">Passkey hinzufügen</p>
+                  <div className="flex gap-2">
+                    <Field label="Gerätename (optional)">
+                      <Input
+                        placeholder="z. B. MacBook Pro"
+                        value={deviceLabel}
+                        onChange={(e) => setDeviceLabel(e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                  <Button className="mt-3" loading={loading} onClick={() => void onRegisterPasskey()}>
+                    <Fingerprint size={16} />
+                    Passkey registrieren
+                  </Button>
                 </div>
-                <Button className="mt-3" loading={loading} onClick={() => void onRegisterPasskey()}>
-                  <Fingerprint size={16} />
-                  Passkey registrieren
-                </Button>
-              </div>
-            ) : (
-              <p className="text-sm text-muted">
-                Dein Browser unterstützt keine Passkeys (WebAuthn).
-              </p>
-            )}
+              ) : (
+                <p className="text-sm text-muted">
+                  Dein Browser unterstützt keine Passkeys (WebAuthn).
+                </p>
+              ))}
           </CardBody>
         </Card>
 
