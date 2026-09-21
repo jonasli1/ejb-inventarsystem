@@ -65,154 +65,155 @@ export function ProfilePage() {
   const hasLocalPassword = me.authMethods.includes('local');
 
   return (
-    <div>
+    <div className="flex flex-col gap-6">
       <PageHeader title="Profil" description="Deine Kontoinformationen und Anmeldemethoden." />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Konto</CardTitle>
-          </CardHeader>
-          <CardBody className="flex flex-col gap-3 text-sm">
-            <div className="flex items-center gap-2">
-              <Mail size={15} className="text-muted" />
-              <span className="text-ink">{me.email}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <ShieldCheck size={15} className="text-muted" />
-              <span className="text-ink">{me.roles.map((r) => r.name).join(', ') || 'Keine Rollen'}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <UsersRound size={15} className="text-muted" />
-              <span className="text-ink">{me.groups.map((g) => g.name).join(', ') || 'Keine Gruppen'}</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {me.permissions.map((p) => (
-                <Badge key={p} tone="neutral">
-                  {p}
-                </Badge>
-              ))}
-            </div>
-          </CardBody>
-        </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Konto</CardTitle>
+        </CardHeader>
+        <CardBody className="flex flex-col gap-3 text-sm">
+          <div className="flex items-center gap-2">
+            <Mail size={15} className="text-muted" />
+            <span className="text-ink">{me.email}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={15} className="text-muted" />
+            <span className="text-ink">{me.roles.map((r) => r.name).join(', ') || 'Keine Rollen'}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <UsersRound size={15} className="text-muted" />
+            <span className="text-ink">{me.groups.map((g) => g.name).join(', ') || 'Keine Gruppen'}</span>
+          </div>
+        </CardBody>
+      </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Anmeldemethoden</CardTitle>
-          </CardHeader>
-          <CardBody className="flex flex-col gap-4">
-            <div className="flex flex-wrap gap-1.5">
-              {me.authMethods.map((m) => (
-                <Badge key={m} tone="blue">
-                  {m}
-                </Badge>
-              ))}
-            </div>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Sicherheit</h2>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Anmeldemethoden</CardTitle>
+            </CardHeader>
+            <CardBody className="flex flex-col gap-4">
+              <div className="flex flex-wrap gap-1.5">
+                {me.authMethods.map((m) => (
+                  <Badge key={m} tone="blue">
+                    {m}
+                  </Badge>
+                ))}
+              </div>
 
-            {appSettings?.passkeyAvailable &&
-              (isWebAuthnSupported() ? (
-                <div className="border-t border-border pt-4">
-                  <p className="mb-2 text-sm font-medium text-ink">Passkey hinzufügen</p>
-                  <div className="flex gap-2">
-                    <Field label="Gerätename (optional)">
-                      <Input
-                        placeholder="z. B. MacBook Pro"
-                        value={deviceLabel}
-                        onChange={(e) => setDeviceLabel(e.target.value)}
-                      />
-                    </Field>
+              {appSettings?.passkeyAvailable &&
+                (isWebAuthnSupported() ? (
+                  <div className="border-t border-border pt-4">
+                    <p className="mb-2 text-sm font-medium text-ink">Passkey hinzufügen</p>
+                    <div className="flex gap-2">
+                      <Field label="Gerätename (optional)">
+                        <Input
+                          placeholder="z. B. MacBook Pro"
+                          value={deviceLabel}
+                          onChange={(e) => setDeviceLabel(e.target.value)}
+                        />
+                      </Field>
+                    </div>
+                    <Button className="mt-3" loading={loading} onClick={() => void onRegisterPasskey()}>
+                      <Fingerprint size={16} />
+                      Passkey registrieren
+                    </Button>
                   </div>
-                  <Button className="mt-3" loading={loading} onClick={() => void onRegisterPasskey()}>
-                    <Fingerprint size={16} />
-                    Passkey registrieren
+                ) : (
+                  <p className="text-sm text-muted">
+                    Dein Browser unterstützt keine Passkeys (WebAuthn).
+                  </p>
+                ))}
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Passwort ändern</CardTitle>
+            </CardHeader>
+            <CardBody>
+              {hasLocalPassword ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setPasswordError(null);
+                    if (newPassword !== newPasswordConfirmation) {
+                      setPasswordError('Die neuen Passwörter stimmen nicht überein.');
+                      return;
+                    }
+                    changePasswordMutation.mutate();
+                  }}
+                  className="flex flex-col gap-3"
+                >
+                  <Field label="Aktuelles Passwort">
+                    <Input
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      required
+                    />
+                  </Field>
+                  <Field label="Neues Passwort">
+                    <Input
+                      type="password"
+                      minLength={8}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                    />
+                  </Field>
+                  <Field label="Neues Passwort bestätigen">
+                    <Input
+                      type="password"
+                      minLength={8}
+                      value={newPasswordConfirmation}
+                      onChange={(e) => setNewPasswordConfirmation(e.target.value)}
+                      required
+                    />
+                  </Field>
+                  {passwordError && (
+                    <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{passwordError}</p>
+                  )}
+                  <Button type="submit" className="self-start" loading={changePasswordMutation.isPending}>
+                    <KeyRound size={16} />
+                    Passwort ändern
                   </Button>
-                </div>
+                </form>
               ) : (
                 <p className="text-sm text-muted">
-                  Dein Browser unterstützt keine Passkeys (WebAuthn).
+                  Für dieses Konto ist kein lokales Passwort eingerichtet (Anmeldung nur über ChurchTools/Passkey).
                 </p>
-              ))}
-          </CardBody>
-        </Card>
+              )}
+            </CardBody>
+          </Card>
+        </div>
+      </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Passwort ändern</CardTitle>
-          </CardHeader>
-          <CardBody>
-            {hasLocalPassword ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setPasswordError(null);
-                  if (newPassword !== newPasswordConfirmation) {
-                    setPasswordError('Die neuen Passwörter stimmen nicht überein.');
-                    return;
-                  }
-                  changePasswordMutation.mutate();
-                }}
-                className="flex flex-col gap-3"
-              >
-                <Field label="Aktuelles Passwort">
-                  <Input
-                    type="password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    required
-                  />
-                </Field>
-                <Field label="Neues Passwort">
-                  <Input
-                    type="password"
-                    minLength={8}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                  />
-                </Field>
-                <Field label="Neues Passwort bestätigen">
-                  <Input
-                    type="password"
-                    minLength={8}
-                    value={newPasswordConfirmation}
-                    onChange={(e) => setNewPasswordConfirmation(e.target.value)}
-                    required
-                  />
-                </Field>
-                {passwordError && (
-                  <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{passwordError}</p>
-                )}
-                <Button type="submit" className="self-start" loading={changePasswordMutation.isPending}>
-                  <KeyRound size={16} />
-                  Passwort ändern
-                </Button>
-              </form>
-            ) : (
-              <p className="text-sm text-muted">
-                Für dieses Konto ist kein lokales Passwort eingerichtet (Anmeldung nur über ChurchTools/Passkey).
-              </p>
-            )}
-          </CardBody>
-        </Card>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Präferenzen</h2>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Darstellung</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <ThemePreferenceControl />
+            </CardBody>
+          </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Darstellung</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <ThemePreferenceControl />
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Benachrichtigungen</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <NotificationPreferences />
-          </CardBody>
-        </Card>
-      </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Benachrichtigungen</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <NotificationPreferences />
+            </CardBody>
+          </Card>
+        </div>
+      </section>
     </div>
   );
 }
