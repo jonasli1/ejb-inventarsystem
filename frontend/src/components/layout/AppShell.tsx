@@ -180,7 +180,7 @@ export function AppShell() {
         </header>
 
         <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-8">
-          <div className="mx-auto max-w-6xl">
+          <div className="mx-auto flex h-full max-w-6xl flex-col">
             <Suspense
               fallback={
                 <div className="flex justify-center py-20">

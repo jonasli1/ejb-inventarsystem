@@ -94,19 +94,10 @@ struct ArticlesListView: View {
                     NavigationLink(value: Destination.detail(item.id)) {
                         ArticleRowView(item: item)
                     }
+                    .task { list.loadNextAppendingIfNeeded(currentItem: item) }
                 }
-                if list.totalPages > 1 {
-                    HStack {
-                        Button("Zurück") { Task { await list.loadPreviousPage() } }
-                            .disabled(!list.hasPreviousPage)
-                        Spacer()
-                        Text("Seite \(list.page) von \(list.totalPages)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Weiter") { Task { await list.loadNextPage() } }
-                            .disabled(!list.hasNextPage)
-                    }
+                if list.isLoadingMore {
+                    ProgressView().frame(maxWidth: .infinity)
                 }
             }
             .listStyle(.plain)

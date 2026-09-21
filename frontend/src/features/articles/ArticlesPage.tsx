@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Tags, Trash2, X } from 'lucide-react';
 import { api, getApiErrorMessage } from '@/lib/api-client';
 import type { Article, PaginatedResult } from '@/lib/api-types';
@@ -12,8 +12,8 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { ArticleImageThumbnail } from '@/components/ui/ArticleImageThumbnail';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Pagination } from '@/components/ui/Pagination';
 import { Spinner } from '@/components/ui/Spinner';
+import { VirtualList } from '@/components/ui/VirtualList';
 import { useToast } from '@/components/ui/toast';
 import { ExportButtons } from '@/components/ui/ExportButtons';
 import { downloadExport } from '@/lib/export';
@@ -21,6 +21,20 @@ import { useAuth } from '@/auth/useAuth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { ArticleFormModal } from './ArticleFormModal';
 import { CategoriesModal } from './CategoriesModal';
+
+const ROW_HEIGHT_ESTIMATE = 64;
+
+function ColumnHeader({ showActionsColumn }: { showActionsColumn: boolean }) {
+  return (
+    <div className="hidden items-center gap-3 border-b border-border px-5 py-2.5 text-left text-xs font-medium text-muted sm:flex">
+      <span className="w-8" />
+      <span className="flex-1">Name</span>
+      <span className="w-40">Kategorie</span>
+      <span className="w-64">Bestand</span>
+      {showActionsColumn && <span className="w-8" />}
+    </div>
+  );
+}
 
 export function ArticlesPage() {
   const { hasPermission } = useAuth();
@@ -32,7 +46,6 @@ export function ArticlesPage() {
   const toast = useToast();
   const { data: categories } = useCategories();
 
-  const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -41,20 +54,24 @@ export function ArticlesPage() {
 
   const debouncedSearch = useDebouncedValue(search, 250);
 
-  const query = useQuery({
-    queryKey: ['articles', 'list', page, debouncedSearch, categoryId],
-    queryFn: async () =>
+  const query = useInfiniteQuery({
+    queryKey: ['articles', 'list', debouncedSearch, categoryId],
+    queryFn: async ({ pageParam }: { pageParam: number }) =>
       (
         await api.get<PaginatedResult<Article>>('/articles', {
           params: {
-            page,
+            page: pageParam,
             pageSize: 20,
             ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
             ...(categoryId ? { categoryId } : {}),
           },
         })
       ).data,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.meta.page < lastPage.meta.totalPages ? lastPage.meta.page + 1 : undefined,
   });
+  const articles = useMemo(() => query.data?.pages.flatMap((p) => p.data) ?? [], [query.data]);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => api.delete(`/articles/${id}`),
@@ -66,7 +83,7 @@ export function ArticlesPage() {
   });
 
   return (
-    <div>
+    <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         title="Artikel"
         description="Katalog der Artikel inklusive Bestandsübersicht."
@@ -104,22 +121,13 @@ export function ArticlesPage() {
               name="article-search"
               autoComplete="off"
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setSearch(e.target.value)}
             />
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <div className="w-48">
-              <Select
-                value={categoryId}
-                onChange={(e) => {
-                  setCategoryId(e.target.value);
-                  setPage(1);
-                }}
-              >
+              <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
                 <option value="">Alle Kategorien</option>
                 {categories?.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -131,10 +139,7 @@ export function ArticlesPage() {
             {categoryId && (
               <button
                 type="button"
-                onClick={() => {
-                  setCategoryId('');
-                  setPage(1);
-                }}
+                onClick={() => setCategoryId('')}
                 className="flex items-center gap-1 p-2 -m-2 text-xs font-medium text-muted hover:text-ink"
               >
                 <X size={13} />
@@ -163,26 +168,25 @@ export function ArticlesPage() {
         </div>
       </Card>
 
-      <Card>
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {query.isLoading ? (
           <div className="flex justify-center py-16">
             <Spinner />
           </div>
-        ) : !query.data || query.data.data.length === 0 ? (
+        ) : articles.length === 0 ? (
           <EmptyState title="Keine Artikel gefunden" description="Lege einen neuen Artikel an, um zu starten." />
         ) : (
-          <div>
-            <div className="hidden items-center gap-3 border-b border-border px-5 py-2.5 text-left text-xs font-medium text-muted sm:flex">
-              <span className="w-8" />
-              <span className="flex-1">Name</span>
-              <span className="w-40">Kategorie</span>
-              <span className="w-64">Bestand</span>
-              {(canUpdate || canDelete) && <span className="w-8" />}
-            </div>
-            <div className="divide-y divide-border">
-              {query.data.data.map((article) => (
+          <>
+            <ColumnHeader showActionsColumn={canUpdate || canDelete} />
+            <VirtualList
+              items={articles}
+              estimateSize={ROW_HEIGHT_ESTIMATE}
+              className="min-h-0 flex-1"
+              hasMore={query.hasNextPage}
+              isFetchingMore={query.isFetchingNextPage}
+              onEndReached={() => void query.fetchNextPage()}
+              renderItem={(article) => (
                 <div
-                  key={article.id}
                   onClick={() => {
                     if (!canUpdate) return;
                     setEditing(article);
@@ -235,17 +239,9 @@ export function ArticlesPage() {
                     </span>
                   )}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {query.data && (
-          <Pagination
-            page={query.data.meta.page}
-            totalPages={query.data.meta.totalPages}
-            total={query.data.meta.total}
-            onPageChange={setPage}
-          />
+              )}
+            />
+          </>
         )}
       </Card>
 

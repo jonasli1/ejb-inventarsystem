@@ -198,7 +198,7 @@ export function InventoryPage() {
   ].filter((f): f is { type: InventoryFilterType; label: string } => !!f);
 
   return (
-    <div>
+    <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         title="Inventar"
         description="Bestand nach Standort, Raum, Status, Kategorie und Eigentümer durchsuchen."
@@ -335,7 +335,7 @@ export function InventoryPage() {
         </div>
       </Card>
 
-      <Card>
+      <Card className={grouped ? undefined : 'flex min-h-0 flex-1 flex-col overflow-hidden'}>
         {grouped ? (
           groupedQuery.isLoading ? (
             <div className="flex justify-center py-16">
@@ -404,7 +404,7 @@ export function InventoryPage() {
             <VirtualList
               items={flatItems}
               estimateSize={ROW_HEIGHT_ESTIMATE}
-              className="max-h-[65vh]"
+              className="min-h-0 flex-1"
               hasMore={flatQuery.hasNextPage}
               isFetchingMore={flatQuery.isFetchingNextPage}
               onEndReached={() => void flatQuery.fetchNextPage()}
