@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { LoansService } from './loans.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -118,12 +119,14 @@ describe('LoansService', () => {
       createFromResolvedItems: jest.fn().mockResolvedValue(undefined),
     };
     email = { notifyEvent: jest.fn().mockResolvedValue(undefined) };
+    const config = { get: jest.fn().mockReturnValue('http://localhost:5173') };
     service = new LoansService(
       prisma,
       audit as unknown as AuditService,
       groups as unknown as GroupsService,
       loanTemplates as unknown as LoanTemplatesService,
       email as unknown as EmailService,
+      config as unknown as ConfigService,
     );
   });
 

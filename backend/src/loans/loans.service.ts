@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   InventoryItem,
   InventoryStatus,
@@ -63,7 +64,37 @@ export class LoansService {
     private readonly groups: GroupsService,
     private readonly loanTemplates: LoanTemplatesService,
     private readonly email: EmailService,
+    private readonly config: ConfigService,
   ) {}
+
+  /**
+   * Shared variable set for every loan.* notification - built from a loan
+   * already fetched with LOAN_INCLUDE (lentBy + items.inventoryItem.article)
+   * so every call site can pass its already-loaded loan/updated record.
+   */
+  private buildLoanEmailVariables(
+    loan: Prisma.LoanGetPayload<{ include: typeof LOAN_INCLUDE }>,
+  ): Record<string, string> {
+    const itemNames = loan.items.map((i) => i.inventoryItem.article.name);
+    const formatDate = (d: Date | null) =>
+      d ? new Intl.DateTimeFormat('de-DE').format(d) : '';
+
+    return {
+      borrowerName: loan.borrowerName ?? loan.borrowerPersonId ?? '',
+      itemCount: String(loan.items.length),
+      subject: loan.subject ?? '',
+      borrowerStreet: loan.borrowerStreet ?? '',
+      borrowerCity: loan.borrowerCity ?? '',
+      borrowerEmail: loan.borrowerEmail ?? '',
+      borrowerPhone: loan.borrowerPhone ?? '',
+      itemList: itemNames.join(', '),
+      itemListShort: itemNames.slice(0, 5).join(', '),
+      createdBy: loan.lentBy?.displayName ?? '',
+      startDate: formatDate(loan.checkoutDate),
+      endDate: formatDate(loan.dueDate),
+      loansUrl: `${this.config.get<string>('frontendUrl')}/loans`,
+    };
+  }
 
   async findAll(query: QueryLoanDto) {
     const page = query.page ?? 1;
@@ -676,10 +707,7 @@ export class LoansService {
         await this.groups.getUserIdsWithLoanScopeForItems(resolvedItems);
       await this.email.notifyEvent(
         'loan.requested',
-        {
-          borrowerName: dto.borrowerName ?? dto.borrowerPersonId ?? '',
-          itemCount: String(resolvedItems.length),
-        },
+        this.buildLoanEmailVariables(createdLoan),
         (r) =>
           r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
           scopedUserIds.has(r.id),
@@ -988,10 +1016,7 @@ export class LoansService {
       );
       await this.email.notifyEvent(
         'loan.requested',
-        {
-          borrowerName: loan.borrowerName ?? loan.borrowerPersonId ?? '',
-          itemCount: String(updated.items.length),
-        },
+        this.buildLoanEmailVariables(updated),
         (r) =>
           r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
           scopedUserIds.has(r.id),
@@ -1064,7 +1089,7 @@ export class LoansService {
       );
       await this.email.notifyEvent(
         'loan.approved',
-        { borrowerName: loan.borrowerName ?? loan.borrowerPersonId ?? '' },
+        this.buildLoanEmailVariables(updated),
         (r) =>
           r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
           scopedUserIds.has(r.id),
@@ -1125,7 +1150,7 @@ export class LoansService {
     );
     await this.email.notifyEvent(
       'loan.issued',
-      { borrowerName: loan.borrowerName ?? loan.borrowerPersonId ?? '' },
+      this.buildLoanEmailVariables(loan),
       (r) =>
         r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
         scopedUserIds.has(r.id),
@@ -1253,7 +1278,7 @@ export class LoansService {
       );
       await this.email.notifyEvent(
         'loan.returned',
-        { borrowerName: loan.borrowerName ?? loan.borrowerPersonId ?? '' },
+        this.buildLoanEmailVariables(loan),
         (r) =>
           r.permissions.has(PERMISSIONS.LOANS_ADMINISTER) ||
           scopedUserIds.has(r.id),

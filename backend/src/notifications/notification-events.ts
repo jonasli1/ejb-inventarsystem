@@ -33,6 +33,23 @@ export interface NotificationEventDef {
   defaultBodyHtml: string;
 }
 
+// Shared by every loan.* event below - describes the richer loan context on
+// top of borrowerName/itemCount (subject, address, contact, item lists,
+// creator, dates, a link back into the app).
+const LOAN_CONTEXT_VARIABLES: TemplateVariable[] = [
+  { key: 'subject', description: 'Betreff der Ausleihe' },
+  { key: 'borrowerStreet', description: 'Straße der ausleihenden Person' },
+  { key: 'borrowerCity', description: 'Ort der ausleihenden Person' },
+  { key: 'borrowerEmail', description: 'E-Mail-Adresse der ausleihenden Person' },
+  { key: 'borrowerPhone', description: 'Telefonnummer der ausleihenden Person' },
+  { key: 'itemList', description: 'Auflistung aller Objekte der Ausleihe' },
+  { key: 'itemListShort', description: 'Auflistung der ersten bis zu 5 Objekte der Ausleihe' },
+  { key: 'createdBy', description: 'Ersteller/in der Ausleihe' },
+  { key: 'startDate', description: 'Start-/Ausleihdatum' },
+  { key: 'endDate', description: 'End-/Rückgabedatum' },
+  { key: 'loansUrl', description: 'Link zur Ausleihen-Übersicht' },
+];
+
 export const NOTIFICATION_EVENTS: NotificationEventDef[] = [
   {
     key: 'loan.requested',
@@ -41,6 +58,7 @@ export const NOTIFICATION_EVENTS: NotificationEventDef[] = [
     variables: [
       { key: 'borrowerName', description: 'Name der ausleihenden Person' },
       { key: 'itemCount', description: 'Anzahl der Objekte in der Ausleihe' },
+      ...LOAN_CONTEXT_VARIABLES,
     ],
     defaultSubject: 'Neue Ausleihe wartet auf Genehmigung',
     defaultBodyHtml:
@@ -52,6 +70,7 @@ export const NOTIFICATION_EVENTS: NotificationEventDef[] = [
     permissions: [PERMISSIONS.LOANS_MANAGE, PERMISSIONS.LOANS_ADMINISTER],
     variables: [
       { key: 'borrowerName', description: 'Name der ausleihenden Person' },
+      ...LOAN_CONTEXT_VARIABLES,
     ],
     defaultSubject: 'Ausleihe genehmigt',
     defaultBodyHtml:
@@ -63,6 +82,7 @@ export const NOTIFICATION_EVENTS: NotificationEventDef[] = [
     permissions: [PERMISSIONS.LOANS_MANAGE, PERMISSIONS.LOANS_ADMINISTER],
     variables: [
       { key: 'borrowerName', description: 'Name der ausleihenden Person' },
+      ...LOAN_CONTEXT_VARIABLES,
     ],
     defaultSubject: 'Ausleihe ausgegeben',
     defaultBodyHtml:
@@ -74,6 +94,7 @@ export const NOTIFICATION_EVENTS: NotificationEventDef[] = [
     permissions: [PERMISSIONS.LOANS_MANAGE, PERMISSIONS.LOANS_ADMINISTER],
     variables: [
       { key: 'borrowerName', description: 'Name der ausleihenden Person' },
+      ...LOAN_CONTEXT_VARIABLES,
     ],
     defaultSubject: 'Ausleihe vollständig zurückgegeben',
     defaultBodyHtml:
