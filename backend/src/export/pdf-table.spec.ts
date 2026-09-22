@@ -6,6 +6,17 @@ const COLUMNS: PdfColumn[] = [
   { header: 'Notizen', key: 'notes', width: 200 },
 ];
 
+function countPageObjects(buffer: Buffer): number {
+  // pdfkit compresses each page's content stream by default, so the
+  // rendered footer text ("Seite X von Y") isn't searchable as plain bytes -
+  // but individual page *objects* aren't compressed (only object streams
+  // would be, and pdfkit doesn't use those), so counting `/Type /Page`
+  // (excluding the `/Type /Pages` tree root) reliably tells us how many
+  // pages were actually created.
+  const raw = buffer.toString('latin1');
+  return (raw.match(/\/Type\s*\/Page[^s]/g) ?? []).length;
+}
+
 describe('renderPdf', () => {
   it('produces a valid PDF buffer', async () => {
     const sections: PdfSection[] = [
@@ -20,6 +31,20 @@ describe('renderPdf', () => {
     const buffer = await renderPdf('Test-Export', [], sections);
     expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
     expect(buffer.length).toBeGreaterThan(500);
+  });
+
+  it('does not spill the page-number footer onto an extra trailing page', async () => {
+    // A single short row fits comfortably on one page - the only reason a
+    // second page could appear is the footer's own text draw overflowing
+    // page.maxY() and triggering pdfkit's automatic page break.
+    const sections: PdfSection[] = [
+      {
+        columns: COLUMNS,
+        rows: [{ inventoryNumber: 'INV-001', article: 'Mischpult', notes: 'OK' }],
+      },
+    ];
+    const buffer = await renderPdf('Footer Test', [], sections);
+    expect(countPageObjects(buffer)).toBe(1);
   });
 
   it('does not throw with a very long cell value that must wrap across multiple lines', async () => {
@@ -44,15 +69,7 @@ describe('renderPdf', () => {
     const buffer = await renderPdf('Pagination Test', [], [
       { columns: COLUMNS, rows: manyRows },
     ]);
-    // pdfkit compresses each page's content stream by default, so the
-    // rendered footer text ("Seite X von Y") isn't searchable as plain
-    // bytes - but individual page *objects* aren't compressed (only object
-    // streams would be, and pdfkit doesn't use those), so counting
-    // `/Type /Page` (excluding the `/Type /Pages` tree root) reliably
-    // tells us how many pages were actually created.
-    const raw = buffer.toString('latin1');
-    const pageObjectCount = (raw.match(/\/Type\s*\/Page[^s]/g) ?? []).length;
-    expect(pageObjectCount).toBeGreaterThan(1);
+    expect(countPageObjects(buffer)).toBeGreaterThan(1);
   });
 
   it('handles zero rows without throwing', async () => {

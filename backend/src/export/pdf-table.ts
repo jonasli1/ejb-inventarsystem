@@ -198,6 +198,12 @@ function addPageFooters(doc: PDFKit.PDFDocument) {
       .text(`Seite ${i + 1} von ${range.count}`, doc.page.margins.left, bottom, {
         width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
         align: 'center',
+        // Without an explicit height, pdfkit treats `bottom` (which is
+        // deliberately past page.maxY(), down in the margin gutter) as
+        // overflowing the page and silently starts a new page for the
+        // footer text instead of drawing it here - bounding the text box
+        // keeps the draw on the page we just switchToPage()'d to.
+        height: 20,
       })
       .fillColor('#000000');
   }
