@@ -30,6 +30,47 @@ function emptyRow(): ItemRow {
   return { mode: '', articleId: '', quantity: 1, inventoryItemId: '', label: '' };
 }
 
+/**
+ * Applies picking `article` for row `index` - if that article is already a
+ * "by quantity" row elsewhere in the list, the pick is folded into that
+ * row's quantity instead of creating a second row for the same article (the
+ * row at `index` reverts to empty, since its selection is now represented
+ * by the merged row).
+ */
+function withArticleSelected(rows: ItemRow[], index: number, article: Article): ItemRow[] {
+  const existingIndex = rows.findIndex(
+    (r, i) => i !== index && r.mode === 'article' && r.articleId === article.id,
+  );
+  if (existingIndex !== -1) {
+    return rows.map((r, i) => {
+      if (i === existingIndex) {
+        return { ...r, quantity: (r.quantity === '' ? 1 : r.quantity) + 1 };
+      }
+      if (i === index) {
+        return emptyRow();
+      }
+      return r;
+    });
+  }
+  const next = rows.map((r, i) =>
+    i === index
+      ? {
+          ...r,
+          mode: 'article' as const,
+          articleId: article.id,
+          inventoryItemId: '',
+          quantity: 1,
+          label: `${article.name} (nach Menge)`,
+          accessoryOfItemId: undefined,
+        }
+      : r,
+  );
+  // Once the last row has a selection, reveal a fresh empty row
+  // automatically instead of requiring a manual "Objekt hinzufügen" click.
+  if (index === next.length - 1 && next[index].mode !== '') next.push(emptyRow());
+  return next;
+}
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -327,6 +368,7 @@ export function LoanCreateModal({
                 <ItemSearchSelect
                   selectedLabel={item.label}
                   onSelectItem={(inventoryItem: InventoryItem) => {
+                    if (items.some((i, j) => j !== index && i.inventoryItemId === inventoryItem.id)) return;
                     updateItem(index, {
                       mode: 'item',
                       inventoryItemId: inventoryItem.id,
@@ -339,14 +381,7 @@ export function LoanCreateModal({
                     void addAccessoryRows(inventoryItem.id);
                   }}
                   onSelectArticle={(article: Article) =>
-                    updateItem(index, {
-                      mode: 'article',
-                      articleId: article.id,
-                      inventoryItemId: '',
-                      quantity: 1,
-                      label: `${article.name} (nach Menge)`,
-                      accessoryOfItemId: undefined,
-                    })
+                    setItems((prev) => withArticleSelected(prev, index, article))
                   }
                   onClear={() =>
                     updateItem(index, {

@@ -176,20 +176,26 @@ final class LoanCreateViewModel {
                 i += 1
                 continue
             }
-            var j = i
-            while j < items.count, items[j].inventoryItem.articleId == current.inventoryItem.articleId, !isAccessory(items[j]) {
-                j += 1
-            }
-            let groupSize = j - i
-            if groupSize > 1 {
+            // A quantity-loanable article is always shown as a single "by quantity"
+            // line (even with just one unit), keyed off the article's own flag rather
+            // than "are there currently >1 consecutive units" - otherwise a quantity
+            // of 1 seeds as a .specificItem line, and re-adding the same article via
+            // addArticleQuantity() (which merges by the "article-<id>" line id) fails
+            // to find it, producing a second, separate line for the same article.
+            if current.inventoryItem.article.loanableByQuantity {
+                var j = i
+                while j < items.count, items[j].inventoryItem.articleId == current.inventoryItem.articleId, !isAccessory(items[j]) {
+                    j += 1
+                }
                 newLines.append(LoanDraftLine(
                     id: "article-\(current.inventoryItem.articleId)",
-                    kind: .articleQuantity(current.inventoryItem.article, quantity: groupSize)
+                    kind: .articleQuantity(current.inventoryItem.article, quantity: j - i)
                 ))
+                i = j
             } else {
                 newLines.append(LoanDraftLine(id: "item-\(current.inventoryItem.id)", kind: .specificItem(current.inventoryItem)))
+                i += 1
             }
-            i = j
         }
         lines = newLines
     }

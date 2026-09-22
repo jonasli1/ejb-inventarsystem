@@ -52,24 +52,29 @@ function initialItems(loan: Loan): EditableItem[] {
       i++;
       continue;
     }
-    // Count consecutive non-accessory items of the same article starting here.
-    let j = i;
-    while (
-      j < items.length &&
-      items[j].inventoryItem.articleId === current.inventoryItem.articleId &&
-      !(items[j].inventoryItem.parentItemId && idsInLoan.has(items[j].inventoryItem.parentItemId!))
-    ) {
-      j++;
-    }
-    const groupSize = j - i;
-    if (groupSize > 1) {
+    // A quantity-loanable article is always shown as a single "by quantity"
+    // row (even with just one unit) so it's recognized as the same row when
+    // more units of it are added later - keying this off the article's own
+    // flag rather than "are there currently >1 consecutive units" is what
+    // keeps re-adding the same article from ever producing a second,
+    // separate row for it.
+    if (current.inventoryItem.article.loanableByQuantity) {
+      let j = i;
+      while (
+        j < items.length &&
+        items[j].inventoryItem.articleId === current.inventoryItem.articleId &&
+        !(items[j].inventoryItem.parentItemId && idsInLoan.has(items[j].inventoryItem.parentItemId!))
+      ) {
+        j++;
+      }
       rows.push({
         mode: 'article',
         articleId: current.inventoryItem.articleId,
-        quantity: groupSize,
+        quantity: j - i,
         inventoryItemId: '',
         label: `${current.inventoryItem.article.name} (nach Menge)`,
       });
+      i = j;
     } else {
       rows.push({
         mode: 'item',
@@ -80,8 +85,8 @@ function initialItems(loan: Loan): EditableItem[] {
           ? `${current.inventoryItem.inventoryNumber} — ${current.inventoryItem.article.name}`
           : current.inventoryItem.article.name,
       });
+      i++;
     }
-    i = j;
   }
   return rows;
 }
@@ -347,17 +352,28 @@ export function LoanEditModal({
                 void addAccessoryRows(inventoryItem.id);
               }}
               onSelectArticle={(article: Article) => {
-                if (items.some((i) => i.mode === 'article' && i.articleId === article.id)) return;
-                setItems((prev) => [
-                  ...prev,
-                  {
-                    mode: 'article',
-                    articleId: article.id,
-                    quantity: 1,
-                    inventoryItemId: '',
-                    label: `${article.name} (nach Menge)`,
-                  },
-                ]);
+                setItems((prev) => {
+                  const existingIndex = prev.findIndex(
+                    (i) => i.mode === 'article' && i.articleId === article.id,
+                  );
+                  if (existingIndex !== -1) {
+                    return prev.map((it, i) =>
+                      i === existingIndex
+                        ? { ...it, quantity: (it.quantity === '' ? 1 : it.quantity) + 1 }
+                        : it,
+                    );
+                  }
+                  return [
+                    ...prev,
+                    {
+                      mode: 'article',
+                      articleId: article.id,
+                      quantity: 1,
+                      inventoryItemId: '',
+                      label: `${article.name} (nach Menge)`,
+                    },
+                  ];
+                });
               }}
               onClear={() => undefined}
               placeholder="Objekt hinzufügen …"
