@@ -1366,6 +1366,58 @@ describe('LoansService', () => {
       );
     });
 
+    it('never re-picks an already-kept unit as the "new" unit when bumping a quantity row', async () => {
+      // Regression test: the candidate query has no notion of "already kept
+      // by this update" - an already-assigned unit's InventoryItem.status is
+      // still "available" until issued, so a naive mock (or the real query)
+      // legitimately returns it alongside a genuinely free one. Before the
+      // fix, resolveCheckoutItems() had no way to exclude it, so bumping a
+      // quantity-based row from 1 to 2 could resolve its "1 additional" unit
+      // as the exact same unit already kept, producing a duplicate LoanItem
+      // for the same inventoryItemId (item-1) instead of the free item-2.
+      const singleItemLoan = {
+        ...editableLoan,
+        items: [
+          {
+            ...editableLoan.items[0],
+            inventoryItem: {
+              ...editableLoan.items[0].inventoryItem,
+              articleId: 'article-1',
+              parentItemId: null,
+            },
+          },
+        ],
+      };
+      prisma.loan.findFirst.mockResolvedValue(singleItemLoan);
+      const allUnits = [
+        { id: 'item-1', status: 'available', parentItemId: null, articleId: 'article-1' },
+        { id: 'item-2', status: 'available', parentItemId: null, articleId: 'article-1' },
+      ];
+      prisma.inventoryItem.findMany.mockImplementation((args: any) => {
+        if (args?.where?.id?.in) return Promise.resolve([]); // nothing pinned explicitly
+        // Mirrors the real query's `id: { notIn: [...] }` filter - unlike a
+        // mock that ignores it, this is what makes the test actually
+        // exercise (and fail without) the fix's candidate exclusion.
+        const excluded: string[] = args?.where?.id?.notIn ?? [];
+        return Promise.resolve(allUnits.filter((u) => !excluded.includes(u.id)));
+      });
+
+      await service.update(
+        'loan-1',
+        { items: [{ articleId: 'article-1', quantity: 2 }] },
+        administerUser,
+      );
+
+      expect(prisma.tx.loanItem.delete).not.toHaveBeenCalled();
+      expect(prisma.tx.loanItem.create).toHaveBeenCalledTimes(1);
+      expect(prisma.tx.loanItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ inventoryItemId: 'item-2' }) }),
+      );
+      expect(prisma.tx.loanItem.create).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ inventoryItemId: 'item-1' }) }),
+      );
+    });
+
     it('decreases a quantity-based row by removing the surplus units', async () => {
       const quantityLoan = {
         ...editableLoan,

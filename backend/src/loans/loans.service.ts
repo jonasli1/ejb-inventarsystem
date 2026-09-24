@@ -447,6 +447,16 @@ export class LoansService {
     // rejected as "orphaned" just because its parent isn't part of *this*
     // resolution batch. Empty for create(), where every item is genuinely
     // new and must satisfy the trailing consistency check on its own.
+    //
+    // Also excluded from every candidate pool below (quantity picks and
+    // auto-bundled accessories) - without this, a quantity spec's remainder
+    // could legitimately re-pick a unit that's already kept elsewhere in the
+    // same update (its InventoryItem.status is still "available" until
+    // issued, so nothing else would flag it as taken), producing a second
+    // LoanItem row for the same inventoryItemId. Deliberately NOT folded
+    // into `usedIds` itself: an explicit inventoryItemId spec's id is always
+    // a member of this set too (see update()'s pinnedIds), and that spec
+    // must still resolve normally.
     extraSatisfiedParentIds: Set<string> = new Set(),
   ): Promise<InventoryItem[]> {
     const resolved: InventoryItem[] = [];
@@ -516,7 +526,7 @@ export class LoansService {
             // quantity request - they only ever travel with their specific
             // main object, resolved via the bundling pass below.
             parentItemId: null,
-            id: { notIn: [...usedIds] },
+            id: { notIn: [...usedIds, ...extraSatisfiedParentIds] },
           },
         });
         const picked: InventoryItem[] = [];
@@ -559,7 +569,7 @@ export class LoansService {
         where: {
           parentItemId: item.id,
           deletedAt: null,
-          id: { notIn: [...usedIds] },
+          id: { notIn: [...usedIds, ...extraSatisfiedParentIds] },
         },
       });
       for (const accessory of accessories) {
