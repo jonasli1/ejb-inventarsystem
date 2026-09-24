@@ -11,6 +11,12 @@ export interface PdfSection {
   title?: string;
   columns: PdfColumn[];
   rows: Record<string, unknown>[];
+  /**
+   * Column whose cell is indented for any row carrying `__indent: true` -
+   * used to visually nest an accessory under its main object, matching the
+   * frontend's indented "Zubehör" rows.
+   */
+  indentColumnKey?: string;
 }
 
 const HEADER_FONT_SIZE = 9;
@@ -18,6 +24,11 @@ const BODY_FONT_SIZE = 8.5;
 const TITLE_FONT_SIZE = 12;
 const ROW_PADDING = 4;
 const CELL_GAP = 8;
+const INDENT_WIDTH = 14;
+
+function isIndentedRow(row: Record<string, unknown>): boolean {
+  return row.__indent === true;
+}
 
 /** Renders a title plus one or more simple tabular sections to a PDF buffer, with page numbers in the footer. */
 export async function renderPdf(
@@ -76,7 +87,7 @@ function drawSection(doc: PDFKit.PDFDocument, section: PdfSection) {
   // active, silently under/over-estimating the space actually needed.
   doc.font('Helvetica').fontSize(BODY_FONT_SIZE);
   const firstRowHeight = section.rows.length
-    ? rowHeight(doc, section.columns, widths, section.rows[0])
+    ? rowHeight(doc, section.columns, widths, section.rows[0], section.indentColumnKey)
     : 0;
   if (doc.y + titleHeight + headerHeight + firstRowHeight > pageBottom) {
     doc.addPage();
@@ -87,7 +98,7 @@ function drawSection(doc: PDFKit.PDFDocument, section: PdfSection) {
     doc.moveDown(0.3);
   }
 
-  drawTable(doc, section.columns, widths, section.rows);
+  drawTable(doc, section.columns, widths, section.rows, section.indentColumnKey);
 }
 
 /** Scales the caller-specified (relative) column widths to exactly fill the page's usable content width. */
@@ -112,10 +123,13 @@ function rowHeight(
   columns: PdfColumn[],
   widths: number[],
   row: Record<string, unknown>,
+  indentColumnKey?: string,
 ): number {
-  const lineHeights = columns.map((c, i) =>
-    doc.heightOfString(cellText(row[c.key]), { width: widths[i] }),
-  );
+  const indented = indentColumnKey && isIndentedRow(row);
+  const lineHeights = columns.map((c, i) => {
+    const width = indented && c.key === indentColumnKey ? widths[i] - INDENT_WIDTH : widths[i];
+    return doc.heightOfString(cellText(row[c.key]), { width });
+  });
   return Math.max(...lineHeights) + ROW_PADDING * 2;
 }
 
@@ -135,6 +149,7 @@ function drawTable(
   columns: PdfColumn[],
   widths: number[],
   rows: Record<string, unknown>[],
+  indentColumnKey?: string,
 ) {
   const startX = doc.page.margins.left;
   const pageBottom = doc.page.height - doc.page.margins.bottom;
@@ -165,20 +180,22 @@ function drawTable(
   doc.font('Helvetica').fontSize(BODY_FONT_SIZE);
 
   for (const row of rows) {
-    const height = rowHeight(doc, columns, widths, row);
+    const height = rowHeight(doc, columns, widths, row, indentColumnKey);
     if (y + height > pageBottom) {
       doc.addPage();
       y = doc.page.margins.top;
       drawHeader();
       doc.font('Helvetica').fontSize(BODY_FONT_SIZE);
     }
+    const indented = indentColumnKey && isIndentedRow(row);
     columns.forEach((c, i) => {
+      const indentThisCell = indented && c.key === indentColumnKey;
+      const x = xFor(doc, widths, i) + (indentThisCell ? INDENT_WIDTH : 0);
+      const width = widths[i] - (indentThisCell ? INDENT_WIDTH : 0);
       // Wraps across multiple lines instead of truncating with an ellipsis,
       // so long values (a note, a long article name, ...) stay readable
       // rather than being silently cut off.
-      doc.text(cellText(row[c.key]), xFor(doc, widths, i), y + ROW_PADDING, {
-        width: widths[i],
-      });
+      doc.text(cellText(row[c.key]), x, y + ROW_PADDING, { width });
     });
     y += height;
   }

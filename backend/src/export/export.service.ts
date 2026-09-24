@@ -98,6 +98,9 @@ export class ExportService {
       { header: 'Zurückgegeben am', key: 'returnedAt', width: 110 },
       { header: 'Rückgabezustand', key: 'returnedCondition', width: 100 },
     ];
+    // Mirrors the frontend's accessory detection: an item is a sub-row of
+    // another main object in this same loan when its parent is also present.
+    const idsInLoan = new Set(loan.items.map((i) => i.inventoryItemId));
     const rows = loan.items.map((item) => ({
       inventoryNumber: item.inventoryItem.inventoryNumber,
       article: item.inventoryItem.article.name,
@@ -106,13 +109,17 @@ export class ExportService {
       returnedAt: fmtDate(item.returnedAt),
       returnedCondition:
         item.returnedCondition != null ? `${item.returnedCondition}%` : '',
+      __indent: Boolean(
+        item.inventoryItem.parentItemId &&
+          idsInLoan.has(item.inventoryItem.parentItemId),
+      ),
     }));
 
     const filename = `Ausleihe-${slug(loan.subject)}-${loan.id.slice(0, 8)}`;
 
     if (format === 'pdf') {
       const buffer = await renderPdf(`Ausleihe: ${loan.subject}`, meta, [
-        { title: 'Objekte', columns, rows },
+        { title: 'Objekte', columns, rows, indentColumnKey: 'article' },
       ]);
       return {
         buffer,

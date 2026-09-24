@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, CornerDownRight, Trash2 } from 'lucide-react';
 import { api, getApiErrorMessage } from '@/lib/api-client';
 import type { Article, InventoryItem, InventoryItemDetail, Loan } from '@/lib/api-types';
 import { Modal } from '@/components/ui/Modal';
@@ -275,8 +275,9 @@ export function LoanEditModal({
           <label className="mb-1.5 block text-sm font-medium text-ink">Objekte</label>
           <div className="flex flex-col gap-2">
             {items.map((item, index) => (
-              <div key={index} className="flex items-start gap-2">
+              <div key={index} className={`flex items-start gap-2 ${item.accessoryOfItemId ? 'pl-6' : ''}`}>
                 <div className="flex flex-1 items-center gap-2 truncate rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink">
+                  {item.accessoryOfItemId && <CornerDownRight size={14} className="shrink-0 text-muted" />}
                   <span className="truncate">{item.label}</span>
                   {item.accessoryOfItemId && (
                     <Badge tone="blue" className="shrink-0">

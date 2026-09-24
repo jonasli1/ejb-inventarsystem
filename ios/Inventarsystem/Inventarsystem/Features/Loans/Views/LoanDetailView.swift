@@ -59,16 +59,37 @@ struct LoanDetailView: View {
             }
 
             Section("Objekte") {
+                let idsInLoan = Set(loan.items.map(\.inventoryItemId))
                 ForEach(loan.items) { item in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.inventoryItem.displayNumber).font(.subheadline.weight(.medium))
-                        Text(item.inventoryItem.article.name).font(.caption).foregroundStyle(.secondary)
-                        if item.returnedAt != nil {
-                            Label("Zurückgegeben", systemImage: "checkmark.circle.fill")
-                                .font(.caption2)
-                                .foregroundStyle(.green)
+                    let isAccessory = item.inventoryItem.parentItemId.map(idsInLoan.contains) ?? false
+                    HStack(alignment: .top, spacing: 6) {
+                        if isAccessory {
+                            Image(systemName: "arrow.turn.down.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 2)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(item.inventoryItem.displayNumber).font(.subheadline.weight(.medium))
+                                if isAccessory {
+                                    Text("Zubehör")
+                                        .font(.caption2.weight(.medium))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(.blue.opacity(0.15), in: Capsule())
+                                        .foregroundStyle(.blue)
+                                }
+                            }
+                            Text(item.inventoryItem.article.name).font(.caption).foregroundStyle(.secondary)
+                            if item.returnedAt != nil {
+                                Label("Zurückgegeben", systemImage: "checkmark.circle.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(.green)
+                            }
                         }
                     }
+                    .padding(.leading, isAccessory ? 16 : 0)
                 }
             }
 

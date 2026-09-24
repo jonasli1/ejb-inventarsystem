@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, CornerDownRight, Plus, Trash2 } from 'lucide-react';
 import { api, getApiErrorMessage } from '@/lib/api-client';
 import type { Article, InventoryItem, InventoryItemDetail, Loan, LoanTemplate } from '@/lib/api-types';
 import { Modal } from '@/components/ui/Modal';
@@ -364,7 +364,13 @@ export function LoanCreateModal({
           <label className="mb-1.5 block text-sm font-medium text-ink">Objekte</label>
           <div className="flex flex-col gap-2">
             {items.map((item, index) => (
-              <div key={index} className="flex items-start gap-2">
+              <div
+                key={index}
+                className={`flex items-start gap-2 ${item.accessoryOfItemId ? 'pl-6' : ''}`}
+              >
+                {item.accessoryOfItemId && (
+                  <CornerDownRight size={14} className="mt-2.5 shrink-0 text-muted" />
+                )}
                 <ItemSearchSelect
                   selectedLabel={item.label}
                   onSelectItem={(inventoryItem: InventoryItem) => {

@@ -82,6 +82,7 @@ struct LoanCreateView: View {
                             }
                         }
                         .buttonStyle(.borderless)
+                        .padding(.leading, line.isAccessory ? 16 : 0)
                     }
                     Button { showItemPicker = true } label: {
                         Label("Bestimmtes Objekt hinzufügen", systemImage: "plus")

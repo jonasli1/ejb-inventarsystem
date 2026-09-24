@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, PackageCheck, Pencil, RotateCcw, Trash2, Undo2 } from 'lucide-react';
+import { CheckCircle2, CornerDownRight, PackageCheck, Pencil, RotateCcw, Trash2, Undo2 } from 'lucide-react';
 import { api, getApiErrorMessage } from '@/lib/api-client';
 import type { Attachment, Loan } from '@/lib/api-types';
 import { Modal } from '@/components/ui/Modal';
-import { InventoryStatusBadge, LoanStatusBadge } from '@/components/ui/Badge';
+import { Badge, InventoryStatusBadge, LoanStatusBadge } from '@/components/ui/Badge';
 import { ExportButtons } from '@/components/ui/ExportButtons';
 import { AttachmentThumbnail } from '@/components/ui/FileUploadList';
 import { downloadExport } from '@/lib/export';
@@ -264,44 +264,62 @@ export function LoanDetailModal({
                 </tr>
               </thead>
               <tbody>
-                {loan.items.map((item) => (
-                  <tr key={item.id} className="border-b border-border last:border-0">
-                    <td className="px-3 py-2 font-mono text-xs text-ink">
-                      {item.inventoryItem.inventoryNumber ?? '–'}
-                    </td>
-                    <td className="px-3 py-2 text-ink">{item.inventoryItem.article.name}</td>
-                    <td className="px-3 py-2">
-                      {item.returnedAt ? (
-                        <InventoryStatusBadge status={item.inventoryItem.status} />
-                      ) : (
-                        <span className="text-xs text-muted">
-                          {loan.status === 'issued' ? 'noch ausgeliehen' : 'noch nicht ausgegeben'}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      {item.approvedAt ? (
-                        <span className="text-xs text-emerald-700" title={item.approvedBy?.displayName}>
-                          Genehmigt{item.approvedBy ? ` (${item.approvedBy.displayName})` : ''}
-                        </span>
-                      ) : canApprove && loan.status === 'requested' ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          loading={approveMutation.isPending}
-                          onClick={() => approveMutation.mutate([item.id])}
-                        >
-                          Genehmigen
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-muted">–</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <ItemPhotos loanItemId={item.id} />
-                    </td>
-                  </tr>
-                ))}
+                {(() => {
+                  const idsInLoan = new Set(loan.items.map((i) => i.inventoryItemId));
+                  return loan.items.map((item) => {
+                    const isAccessory =
+                      item.inventoryItem.parentItemId &&
+                      idsInLoan.has(item.inventoryItem.parentItemId);
+                    return (
+                      <tr key={item.id} className="border-b border-border last:border-0">
+                        <td className="px-3 py-2 font-mono text-xs text-ink">
+                          {item.inventoryItem.inventoryNumber ?? '–'}
+                        </td>
+                        <td className="px-3 py-2 text-ink">
+                          <span className={isAccessory ? 'flex items-center gap-1.5 pl-5' : undefined}>
+                            {isAccessory && <CornerDownRight size={13} className="shrink-0 text-muted" />}
+                            {item.inventoryItem.article.name}
+                            {isAccessory && (
+                              <Badge tone="blue" className="shrink-0">
+                                Zubehör
+                              </Badge>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          {item.returnedAt ? (
+                            <InventoryStatusBadge status={item.inventoryItem.status} />
+                          ) : (
+                            <span className="text-xs text-muted">
+                              {loan.status === 'issued' ? 'noch ausgeliehen' : 'noch nicht ausgegeben'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {item.approvedAt ? (
+                            <span className="text-xs text-emerald-700" title={item.approvedBy?.displayName}>
+                              Genehmigt{item.approvedBy ? ` (${item.approvedBy.displayName})` : ''}
+                            </span>
+                          ) : canApprove && loan.status === 'requested' ? (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              loading={approveMutation.isPending}
+                              onClick={() => approveMutation.mutate([item.id])}
+                            >
+                              Genehmigen
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted">–</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <ItemPhotos loanItemId={item.id} />
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           </div>
